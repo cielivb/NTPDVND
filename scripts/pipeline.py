@@ -14,20 +14,6 @@ MAIN_FILE = os.path.join(DATA_DIR, "proofread_connections_783.parquet")
 
 ############################## HELPER FUNCTIONS ################################
 
-def get_ram_allowance():
-    """ Program should use about half the available RAM at most. 
-    
-    The result of this function is used to determine dask client memory_limit,
-    and for guiding compute sizes later (e.g., for statistical analysis).
-    """
-    mem = psutil.virtual_memory().total # Available RAM in bytes
-    mem_gb = mem / (1024**3) # Available RAM in GB
-    allow_bytes = mem / 2
-    allow_gb = mem_gb / 2
-    print(f"{mem_gb:.1f} GB available on machine; allowing {0.5*mem_gb:.1f} GB")
-    return allow_bytes
-
-
 def estimate_df_ram(df):
     """ Return estimated RAM usage of computed dataframe in bytes """
     return df.memory_usage(deep = True).sum().compute()
@@ -71,9 +57,32 @@ def downsample(connectome, num_requested_rows, allow_bytes):
     return sample
 
 
+
+
 ########################### MAIN PIPELINE FUNCTIONS ############################
 
+def get_ram_allowance():
+    """ Program should use about half the available RAM at most. 
+    
+    The result of this function is used to determine dask client memory_limit,
+    and for guiding compute sizes later (e.g., for statistical analysis).
+    """
+    mem = psutil.virtual_memory().total # Available RAM in bytes
+    mem_gb = mem / (1024**3) # Available RAM in GB
+    allow_bytes = mem / 2
+    allow_gb = mem_gb / 2
+    print(f"{mem_gb:.1f} GB available on machine; allowing {0.5*mem_gb:.1f} GB")
+    return allow_bytes
 
+
+def start_dask(num_cores, allow_bytes):
+    """ Initialise a dask client. Number of threads = number of cores. """
+    # Configure Dask Client using threads because pipeline is data transfer heavy.
+    client = Client(processes=False, 
+                    threads_per_worker=num_cores, 
+                    memory_limit=allow_bytes)
+    print(f"\nDask Dashboard at {client.dashboard_link}\n")
+    return client
 
 
 def load_connectome(file):
@@ -209,9 +218,8 @@ def get_neuropil_summary_stats(connectome):
     return merged_aggregated
 
 
-def do_stats(r_path, result_dir):
+def do_stats(r_path, result_dir, allow_bytes):
     """ Take a sample then spawn a subprocess that runs the R stats script """
-    sample = util.downsample(connectome, 1_000_000)
     try:
         subprocess.run(
             [r_path, "statistical_analysis.R", result_dir], 

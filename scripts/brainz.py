@@ -5,8 +5,6 @@ import pandas as pd
 import pyvista as pv
 from datetime import datetime
 
-from . import util
-
 
 def _drop_unassigned(connectome, id_col):
     """ Remove edges/rows where ID is NaN """

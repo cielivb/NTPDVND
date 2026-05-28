@@ -3,7 +3,7 @@
 Convert raw data from feather files to parquet files, and generate scalability 
 test files of varying problem sizes.
 
-This script should only need to be ran once.
+This script will not do anything if the test parquet files already exist.
 
 """
 import dask
@@ -11,7 +11,6 @@ import os
 import pyarrow
 import pyarrow.feather as feather
 import pyarrow.parquet as pq
-from concurrent.futures import ThreadPoolExecutor
 from dask import dataframe as ddf
 from dask.distributed import Client
 from dask.distributed import get_client
