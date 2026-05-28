@@ -12,6 +12,8 @@ COORD_FILE = os.path.join(DATA_DIR, "flywire_synapses_783.parquet")
 MAIN_FILE = os.path.join(DATA_DIR, "proofread_connections_783.parquet")
 
 
+############################## HELPER FUNCTIONS ################################
+
 def get_ram_allowance():
     """ Program should use about half the available RAM at most. 
     
@@ -24,6 +26,54 @@ def get_ram_allowance():
     allow_gb = mem_gb / 2
     print(f"{mem_gb:.1f} GB available on machine; allowing {0.5*mem_gb:.1f} GB")
     return allow_bytes
+
+
+def estimate_df_ram(df):
+    """ Return estimated RAM usage of computed dataframe in bytes """
+    return df.memory_usage(deep = True).sum().compute()
+
+
+def downsample(connectome, num_requested_rows, allow_bytes):
+    """ Sample up to n rows from connectome, respecting RAM allowance.
+    
+    Sample approximately n rows from connectome dataframe if it will stay under 
+    RAM allowance when computed, otherwise sample as many rows as possible within
+    the RAM allowance (allow_bytes). A hard limit of 0.2 * allow_bytes is used
+    to help constrain unmanaged RAM usage.
+
+    Use to keep RAM in check during plotting and statistical analysis, where
+    functions cannot operate on dask dataframes directly.
+    
+    """
+    limiter = 0.1
+    
+    # Get the amount of RAM the request demands
+    row_count = connectome.shape[0].compute()
+    frac = num_requested_rows / row_count
+    sample = connectome.sample(frac=frac)
+    request_ram = estimate_df_ram(sample)
+    
+    # Use hard limit of limiter * allow_bytes for downsampled dataframe to reduce
+    # both unmanaged RAM usage and disk spillage
+    if request_ram < limiter * allow_bytes:
+        return sample # Within limit
+    
+    # Fallback - warn and return a dataframe as large as limiter * allow_bytes
+    multiplier = request_ram / (limiter * allow_bytes)
+    frac = frac / multiplier
+    sample = connectome.sample(frac=frac)
+    num_rows = sample.shape[0].compute()
+    new_ram = estimate_df_ram(sample)
+    print(f"Number of requested rows ({num_requested_rows}) too large "
+          f"({request_ram/(1024**3):.1f} GB). Using {num_rows} rows instead "
+          f"({new_ram/(1024**3):.1f} GB).")
+    
+    return sample
+
+
+########################### MAIN PIPELINE FUNCTIONS ############################
+
+
 
 
 def load_connectome(file):
