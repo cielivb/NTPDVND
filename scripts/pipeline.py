@@ -2,13 +2,28 @@
 
 from datetime import datetime
 import os
+import psutil
 
 from dask import dataframe as ddf
 
-ROOT_DIR = os.path.dirname(__file__)
+ROOT_DIR = os.path.dirname(os.path.dirname(__file__))
 DATA_DIR = os.path.join(ROOT_DIR, "data")
 COORD_FILE = os.path.join(DATA_DIR, "flywire_synapses_783.parquet")
 MAIN_FILE = os.path.join(DATA_DIR, "proofread_connections_783.parquet")
+
+
+def get_ram_allowance():
+    """ Program should use about half the available RAM at most. 
+    
+    The result of this function is used to determine dask client memory_limit,
+    and for guiding compute sizes later (e.g., for statistical analysis).
+    """
+    mem = psutil.virtual_memory().total # Available RAM in bytes
+    mem_gb = mem / (1024**3) # Available RAM in GB
+    allow_bytes = mem / 2
+    allow_gb = mem_gb / 2
+    print(f"{mem_gb:.1f} GB available on machine; allowing {0.5*mem_gb:.1f} GB")
+    return allow_bytes
 
 
 def load_connectome(file):

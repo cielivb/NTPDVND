@@ -19,7 +19,7 @@ from datetime import datetime
 
 CLIENT = None # Assigned in run()
 
-ROOT_DIR = os.path.dirname(__file__)
+ROOT_DIR = os.path.dirname(os.path.dirname(__file__))
 DATA_DIR = os.path.join(ROOT_DIR, "data")
 MAIN_FILE_RAW = os.path.join(DATA_DIR, "proofread_connections_783.feather")
 COORD_FILE_RAW = os.path.join(DATA_DIR, "flywire_synapses_783.feather")
@@ -45,7 +45,7 @@ def _feather_to_parquet(file_to_convert, destination):
     # Create streaming reader for random file access (no load!)
     reader = pyarrow.ipc.open_file(file_to_convert) 
     writer = None
-    chunk_size = 250_000    
+    chunk_size = 250_000
     
     # Iteratively load, convert, and store feather record batches to parquet
     for i in range(reader.num_record_batches):

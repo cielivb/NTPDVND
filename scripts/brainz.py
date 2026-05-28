@@ -5,7 +5,7 @@ import pandas as pd
 import pyvista as pv
 from datetime import datetime
 
-import util
+from . import util
 
 
 def _drop_unassigned(connectome, id_col):
