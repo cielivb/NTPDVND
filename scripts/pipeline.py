@@ -9,6 +9,7 @@ from dask.distributed import Client
 
 ROOT_DIR = os.path.dirname(os.path.dirname(__file__))
 DATA_DIR = os.path.join(ROOT_DIR, "data")
+LOCALDATA_DIR = os.path.join(ROOT_DIR, "localdata")
 COORD_FILE = os.path.join(DATA_DIR, "flywire_synapses_783.parquet")
 MAIN_FILE = os.path.join(DATA_DIR, "proofread_connections_783.parquet")
 
@@ -95,8 +96,9 @@ def load_connectome(file):
     connectome = connectome.rename(
         columns = {"pre_pt_root_id": "pre", "post_pt_root_id": "post",
                    "gaba_avg": "gaba", "ach_avg": "ach", "glut_avg": "glut",
-                   "oct_avg": "oct", "ser_avg": "ser", "da_avg": "da"}).persist()
+                   "oct_avg": "oct", "ser_avg": "ser", "da_avg": "da"})
     connectome["neuropil"] = connectome["neuropil"].cat.as_known()
+    connectome = connectome.persist()
     print(f"{datetime.now().strftime("%H:%M:%S")} Connectome loaded")
     return connectome
 
@@ -115,6 +117,29 @@ def normalise_nt_probs(connectome):
     connectome = connectome.dropna().persist(subset=["gaba", "ach", "other"]) # Drop NaNs
     print(f"{datetime.now().strftime("%H:%M:%S")} Neurotransmitter probabilities normalised")
     return connectome
+
+
+def attach_neuropil_metadata(connectome):
+    """ Add high-level neuropil regions and neuropil names to connectome. 
+    
+    Each neuropil is situated within a higher-level neuropil. For example, the 
+    medulla neuropil is part of the optic lobe neuropil. 
+    
+    The dataset represents neuropils by codes. Attach neuropil names for ease
+    of later data interpretation.
+    
+    """
+    print(f"{datetime.now().strftime("%H:%M:%S")} Attaching neuropil metadata ...")
+    
+    # Load neuropils.csv
+    path = os.path.join(LOCALDATA_DIR, "neuropils.csv")
+    neuropil_metadata = ddf.read_csv(path)
+    
+    # Merge with connectome on neuropil ID then return
+    merged = connectome.merge(neuropil_metadata, on="neuropil", how="inner").persist()
+    
+    print(f"{datetime.now().strftime("%H:%M:%S")} Neuropil metadata attached")
+    return merged
 
 
 def load_coord_file():

@@ -1,4 +1,4 @@
-region,neuropil,desc
+region,neuropil,neuropil_desc
 Optic Lobe,AME_L,accessory medulla
 Optic Lobe,AME_R,accessory medulla
 Optic Lobe,LA_L,lamina of the compound eyes
@@ -43,14 +43,14 @@ Ventromedial Neuropils,IPS_L,inferior posterior slope
 Ventromedial Neuropils,IPS_R,inferior posterior slope
 Ventromedial Neuropils,EPA_L,epaulette
 Ventromedial Neuropils,EPA_R,epaulette
-Mushroom Body,MB_PED_L,mushroom body -> pedunculus
-Mushroom Body,MB_PED_R,mushroom body -> pedunculus
-Mushroom Body,MB_VL_L,mushroom body -> vertical lobe
-Mushroom Body,MB_VL_R,mushroom body -> vertical lobe
-Mushroom Body,MB_ML_L,mushroom body -> medial lobe
-Mushroom Body,MB_ML_R,mushroom body -> medial lobe
-Mushroom Body,MB_CA_L,mushroom body -> calyx
-Mushroom Body,MB_CA_R,mushroom body -> calyx
+Mushroom Body,MB_PED_L,pedunculus
+Mushroom Body,MB_PED_R,pedunculus
+Mushroom Body,MB_VL_L,vertical lobe
+Mushroom Body,MB_VL_R,vertical lobe
+Mushroom Body,MB_ML_L,medial lobe
+Mushroom Body,MB_ML_R,medial lobe
+Mushroom Body,MB_CA_L,calyx
+Mushroom Body,MB_CA_R,calyx
 Antennal Lobe,AL_L,antennal lobe
 Antennal Lobe,AL_R,antennal lobe
 Superior Neuropils,SLP_L,superior lateral protocerebrum
