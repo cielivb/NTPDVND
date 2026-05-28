@@ -1,0 +1,80 @@
+region,neuropil,desc
+Optic Lobe,AME_L,accessory medulla
+Optic Lobe,AME_R,accessory medulla
+Optic Lobe,LA_L,lamina of the compound eyes
+Optic Lobe,LA_R,lamina of the compound eyes
+Optic Lobe,LO_L,lobula
+Optic Lobe,LO_R,lobula
+Optic Lobe,LOP_L,lobula plate
+Optic Lobe,LOP_R,lobula plate
+Optic Lobe,ME_L,medulla
+Optic Lobe,ME_R,medulla
+Lateral Complex,BU_L,bulb (in lateral complex)
+Lateral Complex,BU_R,bulb (in lateral complex)
+Lateral Complex,LAL_L,lateral accessory lobe
+Lateral Complex,LAL_R,lateral accessory lobe
+Lateral Complex,GA_L,gall
+Lateral Complex,GA_R,gall
+Lateral Horn,LH_L,lateral horn
+Lateral Horn,LH_R,lateral horn
+Periesophageal Neuropils,CAN_L,cantle
+Periesophageal Neuropils,CAN_R,cantle
+Periesophageal Neuropils,AMMC_L,antennal mechanosensory and motor center
+Periesophageal Neuropils,AMMC_R,antennal mechanosensory and motor center
+Periesophageal Neuropils,FLA_L,flange
+Periesophageal Neuropils,FLA_R,flange
+Inferior Neuropils,ICL_L,inferior clamp
+Inferior Neuropils,ICL_R,inferior clamp
+Inferior Neuropils,IB_L,inferior bridge
+Inferior Neuropils,IB_R,inferior bridge
+Inferior Neuropils,ATL_L,antler
+Inferior Neuropils,ATL_R,antler
+Inferior Neuropils,CRE_L,crepine
+Inferior Neuropils,CRE_R,crepine
+Inferior Neuropils,SCL_L,superior clamp
+Inferior Neuropils,SCL_R,superior clamp
+Ventromedial Neuropils,VES_L,vest
+Ventromedial Neuropils,VES_R,vest
+Ventromedial Neuropils,GOR_L,gorget
+Ventromedial Neuropils,GOR_R,gorget
+Ventromedial Neuropils,SPS_L,superior posterior slope
+Ventromedial Neuropils,SPS_R,superior posterior slope
+Ventromedial Neuropils,IPS_L,inferior posterior slope
+Ventromedial Neuropils,IPS_R,inferior posterior slope
+Ventromedial Neuropils,EPA_L,epaulette
+Ventromedial Neuropils,EPA_R,epaulette
+Mushroom Body,MB_PED_L,mushroom body -> pedunculus
+Mushroom Body,MB_PED_R,mushroom body -> pedunculus
+Mushroom Body,MB_VL_L,mushroom body -> vertical lobe
+Mushroom Body,MB_VL_R,mushroom body -> vertical lobe
+Mushroom Body,MB_ML_L,mushroom body -> medial lobe
+Mushroom Body,MB_ML_R,mushroom body -> medial lobe
+Mushroom Body,MB_CA_L,mushroom body -> calyx
+Mushroom Body,MB_CA_R,mushroom body -> calyx
+Antennal Lobe,AL_L,antennal lobe
+Antennal Lobe,AL_R,antennal lobe
+Superior Neuropils,SLP_L,superior lateral protocerebrum
+Superior Neuropils,SLP_R,superior lateral protocerebrum
+Superior Neuropils,SIP_L,superior intermediate protocerebrum
+Superior Neuropils,SIP_R,superior intermediate protocerebrum
+Superior Neuropils,SMP_L,superior medial protocerebrum
+Superior Neuropils,SMP_R,superior medial protocerebrum
+Ventrolateral Neuropils,AVLP_L,anterior VLP (ventrolateral protocerebrum)
+Ventrolateral Neuropils,AVLP_R,anterior VLP (ventrolateral protocerebrum)
+Ventrolateral Neuropils,PVLP_L,posterior VLP (ventrolateral protocerebrum)
+Ventrolateral Neuropils,PVLP_R,posterior VLP (ventrolateral protocerebrum)
+Ventrolateral Neuropils,WED_L,wedge
+Ventrolateral Neuropils,WED_R,wedge
+Ventrolateral Neuropils,PLP_L,posterior lateral protocerebrum
+Ventrolateral Neuropils,PLP_R,posterior lateral protocerebrum
+Ventrolateral Neuropils,AOTU_L,anterior optic tubercle
+Ventrolateral Neuropils,AOTU_R,anterior optic tubercle
+Central Complex,NO,noduli
+Central Complex,PB,protocerebral bridge
+Central Complex,EB,ellipsoid body
+Central Complex,FB,fanshaped body
+Periesophageal Neuropils,SAD,saddle
+Periesophageal Neuropils,PRW,prow
+Gnathal Ganglia,GNG,gnathal ganglia
+Ocelli,OCG,ocellar ganglion
+Other Regions,UNASGD,unassigned

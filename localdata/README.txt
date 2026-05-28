@@ -1,0 +1,1 @@
+neuropils.csv : maps neuropil codes to their extended names and their respective lobes in drosophila. Source https://codex.flywire.ai/app/neuropils?dataset=fafb
