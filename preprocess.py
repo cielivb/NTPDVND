@@ -31,29 +31,46 @@ METADATA_FILE = os.path.join(DATA_DIR, "metadata.txt")
 
 ############################### PREPROCESS #####################################
 
-def _preprocess_main_file(raw_path):
-    """ Convert to parquet and create scalability test files """
-    global MAIN_FILE
-    if not os.path.exists(MAIN_FILE):
-        _feather_to_parquet(file_to_convert=raw_path, destination=MAIN_FILE)
-
-
-def _preprocess_coord_file(raw_path):
-    """ Convert coordinate file to parquet file """
-    global COORD_FILE
-    if not os.path.exists(COORD_FILE):
-        _feather_to_parquet(file_to_convert=raw_path, destination=COORD_FILE)
-
 
 def _feather_to_parquet(file_to_convert, destination):
-    """ Convert feather file to parquet file
-    WARNING: brings the whole feather file into memory. This hogs about 11 GB 
-    memory max (inspected via Dask Dashboard)"""
-    print(f"{datetime.now().strftime("%H:%M:%S")} Converting {file_to_convert} to parquet file ...")
-    table = feather.read_table(file_to_convert)
-    pq.write_table(table, destination, compression=None, 
-                   row_group_size=800_000)
-    print(f"{datetime.now().strftime("%H:%M:%S")} {file_to_convert} converted to parquet")
+    """ Convert feather file to parquet via record batch streaming.
+    
+    This approach minimises peak RAM, with peak RAM usage roughly proportional
+    to the largest record batch in the feather file. This is superior to loading
+    an entire 9.5 GB feather file into RAM using the naive write_tables method.
+    """
+    print(f"{datetime.now().strftime("%H:%M:%S")} Converting {file_to_convert} "
+          "to parquet file ...")
+    
+    # Create streaming reader for random file access (no load!)
+    reader = pyarrow.ipc.open_file(file_to_convert) 
+    writer = None
+    chunk_size = 250_000    
+    
+    # Iteratively load, convert, and store feather record batches to parquet
+    for i in range(reader.num_record_batches):
+        batch = reader.get_record_batch(i) # Get a subset of rows from feather
+        if i == 0: # Print batch info for the first batch
+            print(f"Record batch contains {batch.num_rows} rows "
+                  f"({batch.nbytes / (1024**3)} GB)")
+        table = pa.Table.from_batches([batch]) # Convert batch to pyarrow table
+        
+        # Create parquet writer (once). The writer needs a schema, and that 
+        # schema is supplied by the table, hence cannot do this step outside
+        # the for loop.
+        if writer is None:
+            writer = pq.ParquetWriter(destination, table.schema)
+            
+        # Write batch into row groups of chunk size. Chunk size of 250,000
+        # means 250,000 rows per row group/chunk. Currently do not know how
+        # large the batches are in the feather file but they could be much
+        # larger than 250,000. If they are, it will dramatically slow down
+        # the pipeline. 250,000 rows per chunk seems to be a healthy middle ground.
+        writer.write_table(table, row_group_size = chunk_size)
+        
+    writer.close()
+    print(f"{datetime.now().strftime("%H:%M:%S")} {file_to_convert} converted "
+          "to parquet file")
 
 
 def _get_all_node_ids(df, node_cols=["pre","post"]):
@@ -74,7 +91,8 @@ def _write_test_metadata(sub_connectome, test_id):
     
     num_nodes, num_edges, neuropils = dask.compute(
         num_nodes, num_edges, neuropils)
-    node_edge_ratio = num_nodes/num_edges    
+    node_edge_ratio = num_nodes/num_edges
+    num_nodes, node_edge_ratio = num_nodes.item(), node_edge_ratio.item()
     
     with open(METADATA_FILE, "a") as mfile:
         mfile.write(f"Testfile Metadata: {test_id}.feather\n")
@@ -144,14 +162,16 @@ def run():
     global MAIN_FILE_RAW, COORD_FILE_RAW, CLIENT
     print("Notice: this may take about 10 minutes if this is the first time "
           "running preprocess.py. ")
+    
+    # Convert feather files to parquet if not already converted
     if not _is_downloaded(MAIN_FILE_RAW, COORD_FILE_RAW):
-        raise Exception("Cannot find raw data files in the data directory")
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        f1 = pool.submit(_preprocess_main_file, MAIN_FILE_RAW)
-        f2 = pool.submit(_preprocess_coord_file, COORD_FILE_RAW)
-        file_paths = f1.result()
-        coord_path = f2.result()
-        
+        raise Exception("Cannot find downloaded feather files in root/data/")
+    if not os.path.exists(MAIN_FILE):
+        _feather_to_parquet(file_to_convert=MAIN_FILE_RAW, destination=MAIN_FILE)
+    if not os.path.exists(COORD_FILE):
+        _feather_to_parquet(file_to_convert=COORD_FILE_RAW, destination=COORD_FILE)
+    
+    # Make test parquet files of varying sizes
     CLIENT = get_client()
     if not _all_tests_exist():
         _make_tests()

@@ -350,11 +350,21 @@ dependencies:
   - pip:
       - fast-hdbscan==0.3.2
       - joblib==1.5.3
+      - jupyter-server-proxy==4.5.0
       - llvmlite==0.47.0
+      - more-itertools==11.1.0
       - mpltern==1.0.4
+      - nest-asyncio2==1.7.2
       - numba==0.65.1
       - pyarrow==24.0.0
       - scikit-learn==1.8.0
       - scipy==1.17.1
+      - simpervisor==1.0.0
       - threadpoolctl==3.6.0
+      - trame==3.13.2
+      - trame-client==3.12.3
+      - trame-common==1.2.3
+      - trame-server==3.12.4
+      - trame-vtk==2.11.8
+      - trame-vuetify==3.2.2
 prefix: C:\Users\cielb\anaconda3\envs\nta1
