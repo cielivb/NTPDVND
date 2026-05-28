@@ -8,13 +8,14 @@ This script will not do anything if the test parquet files already exist.
 """
 import dask
 import os
-import pyarrow
+import pyarrow as pa
 import pyarrow.feather as feather
 import pyarrow.parquet as pq
 from dask import dataframe as ddf
 from dask.distributed import Client
 from dask.distributed import get_client
 from datetime import datetime
+from tqdm import tqdm
 
 CLIENT = None # Assigned in run()
 
@@ -42,16 +43,16 @@ def _feather_to_parquet(file_to_convert, destination):
           "to parquet file ...")
     
     # Create streaming reader for random file access (no load!)
-    reader = pyarrow.ipc.open_file(file_to_convert) 
+    reader = pa.ipc.open_file(file_to_convert) 
     writer = None
-    chunk_size = 250_000
+    
+    # Roughly equal to batch size, helps keep dask worker RAM down compared to 
+    # 250_000 but at the cost of making this conversion process slower
+    chunk_size = 60_000
     
     # Iteratively load, convert, and store feather record batches to parquet
-    for i in range(reader.num_record_batches):
+    for i in tqdm(range(reader.num_record_batches), desc="Converting ...", colour="green"):
         batch = reader.get_record_batch(i) # Get a subset of rows from feather
-        if i == 0: # Print batch info for the first batch
-            print(f"Record batch contains {batch.num_rows} rows "
-                  f"({batch.nbytes / (1024**3)} GB)")
         table = pa.Table.from_batches([batch]) # Convert batch to pyarrow table
         
         # Create parquet writer (once). The writer needs a schema, and that 
@@ -60,11 +61,6 @@ def _feather_to_parquet(file_to_convert, destination):
         if writer is None:
             writer = pq.ParquetWriter(destination, table.schema)
             
-        # Write batch into row groups of chunk size. Chunk size of 250,000
-        # means 250,000 rows per row group/chunk. Currently do not know how
-        # large the batches are in the feather file but they could be much
-        # larger than 250,000. If they are, it will dramatically slow down
-        # the pipeline. 250,000 rows per chunk seems to be a healthy middle ground.
         writer.write_table(table, row_group_size = chunk_size)
         
     writer.close()
@@ -159,8 +155,8 @@ def _all_tests_exist():
 def run():
     """ Convert raw data """
     global MAIN_FILE_RAW, COORD_FILE_RAW, CLIENT
-    print("Notice: this may take about 10 minutes if this is the first time "
-          "running preprocess.py. ")
+    print("Notice: this may take some time if this is the first time "
+          "running preprocess.py.\n")
     
     # Convert feather files to parquet if not already converted
     if not _is_downloaded(MAIN_FILE_RAW, COORD_FILE_RAW):

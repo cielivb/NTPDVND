@@ -361,6 +361,7 @@ dependencies:
       - scipy==1.17.1
       - simpervisor==1.0.0
       - threadpoolctl==3.6.0
+      - tqdm==4.67.3
       - trame==3.13.2
       - trame-client==3.12.3
       - trame-common==1.2.3
