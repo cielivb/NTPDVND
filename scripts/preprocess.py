@@ -46,9 +46,8 @@ def _feather_to_parquet(file_to_convert, destination):
     reader = pa.ipc.open_file(file_to_convert) 
     writer = None
     
-    # Roughly equal to batch size, helps keep dask worker RAM down compared to 
-    # 250_000 but at the cost of making this conversion process slower
-    chunk_size = 60_000
+    # Aiming for between 50 MB and 200 MB per dask partition
+    chunk_size = 1_000_000
     
     # Iteratively load, convert, and store feather record batches to parquet
     for i in tqdm(range(reader.num_record_batches), desc="Converting ...", colour="green"):

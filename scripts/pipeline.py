@@ -1,7 +1,10 @@
 """ Main pipeline file - use for performance testing """
 
+from dask import annotate
 from datetime import datetime
+import numpy as np
 import os
+import pandas as pd
 import psutil
 
 from dask import dataframe as ddf
@@ -61,44 +64,91 @@ def downsample(connectome, num_requested_rows, allow_bytes):
 
 
 
-########################### MAIN PIPELINE FUNCTIONS ############################
+##################################### INIT #####################################
 
 def get_ram_allowance():
-    """ Program should use about half the available RAM at most. 
+    """ Program should aim to use about 60% of the available RAM. 
     
     The result of this function is used to determine dask client memory_limit,
     and for guiding compute sizes later (e.g., for statistical analysis).
     """
     mem = psutil.virtual_memory().total # Available RAM in bytes
     mem_gb = mem / (1024**3) # Available RAM in GiB
-    allow_bytes = mem / 2
-    allow_gb = mem_gb / 2
-    print(f"{mem_gb:.1f} GB available on machine; allowing {0.5*mem_gb:.1f} GB")
+    allow_bytes = mem * 0.6
+    allow_gib = mem_gib * 0.6
+    print(f"{mem_gib:.1f} GiB available on machine; allowing {allow_gib:.1f} GiB")
     return allow_bytes
 
 
-def start_dask(num_cores, allow_bytes):
+def get_partition_size(num_threads, allow_bytes):
+    """ Estimate a safe partition size in bytes.
+    
+    Dask can be trigger happy - it sees a thread and uses it, even if it means
+    going over the RAM allowance. Additionally, shuffles can require 2-3x the
+    size of the data being shuffled. This function takes number of threads and 
+    the RAM allowance into account to estimate a safe dataframe partition size 
+    that is less likely to blow up memory during a big merge.
+    
+    This doesn't account for concurrency overhead; it is just a buffer function.
+    
+    """
+    max_partition_size = 150 * (1024**2) # 150 MiB
+    lower_thresh = 40 * (1024**2) # 40 MiB
+    
+    partition_size = allow_bytes / (7 * num_threads)
+    
+    if partition_size > max_partition_size:
+        return max_partition_size
+    if partition_size < lower_thresh:
+        print("Notice: very small partition size "
+              f"({partition_size/(1024**2):.1f} MiB)")
+        
+    return partition_size
+
+
+def start_dask(num_threads, allow_bytes):
     """ Initialise a dask client. Number of threads = number of cores. """
     # Configure Dask Client using threads because pipeline is data transfer heavy.
+    # Capping number of shuffle tasks to number of threads because default 
+    # config caused memory issues (spilling to disk, pausing worker).
     client = Client(processes=False, 
-                    threads_per_worker=num_cores, 
-                    memory_limit=allow_bytes)
+                    threads_per_worker=num_threads, 
+                    memory_limit=allow_bytes,
+                    resources={"shuffle": num_threads})
     print(f"\nDask Dashboard at {client.dashboard_link}\n")
     return client
 
 
-def load_connectome(file):
+
+
+############################## STAGE 1 : LOAD ##################################
+
+def load_connectome(file, partition_size):
     """ Load parquet connectome file into dask dataframe """
     global MAIN_FILE
     if not file: file = MAIN_FILE
     print(f"{datetime.now().strftime("%H:%M:%S")} Loading connectome ...")
-    connectome = ddf.read_parquet(file).repartition(partition_size="200MB")
+    meta = {"pre_pt_root_id": np.int32,
+            "post_pt_root_id": np.int32,
+            "neuropil": "category",
+            "gaba_avg": np.float32,
+            "ach_avg": np.float32,
+            "glut_avg": np.float32,
+            "oct_avg": np.float32,
+            "ser_avg": np.float32,
+            "da_avg": np.float32
+    }
+    connectome = ddf.read_parquet(
+        file, 
+        columns = list(meta.keys()),
+        meta = meta
+    )
+    connectome["neuropil"] = connectome["neuropil"].astype("category")
     connectome = connectome.rename(
         columns = {"pre_pt_root_id": "pre", "post_pt_root_id": "post",
                    "gaba_avg": "gaba", "ach_avg": "ach", "glut_avg": "glut",
                    "oct_avg": "oct", "ser_avg": "ser", "da_avg": "da"})
-    connectome["neuropil"] = connectome["neuropil"].cat.as_known()
-    connectome = connectome.persist()
+    connectome = connectome.repartition(partition_size=partition_size).persist()
     print(f"{datetime.now().strftime("%H:%M:%S")} Connectome loaded")
     return connectome
 
@@ -119,6 +169,73 @@ def normalise_nt_probs(connectome):
     return connectome
 
 
+def load_coord_file(partition_size):
+    """ Load in edge coordinate data from 12.7 GB parquet file. 
+    It is safe to omit neurotransmitter probabilities because each edge has
+    the same neurotransmitter probability, and these probabilities have already
+    been normalised in the preceeding normalise_nt_probs step.
+    """
+    global DATA_DIR
+    coord_file_path = os.path.join(DATA_DIR, "flywire_synapses_783.parquet")
+    meta = {"pre_pt_root_id": np.int32, 
+            "post_pt_root_id": np.int32, 
+            "pre_pt_position_x": np.int32, 
+            "pre_pt_position_y": np.int32,
+            "pre_pt_position_z": np.int32, 
+            "post_pt_position_x": np.int32, 
+            "post_pt_position_y": np.int32, 
+            "post_pt_position_z": np.int32
+    }
+    edge_coords = ddf.read_parquet( # Don't read in neurotransmitter prob cols!
+        coord_file_path, 
+        columns = list(meta.keys()), 
+        meta = meta
+    )
+    edge_coords = edge_coords.rename(
+        columns={"pre_pt_root_id":"pre", "post_pt_root_id": "post"})
+    edge_coords = edge_coords.repartition(partition_size=partition_size).persist()
+    return edge_coords
+
+
+def attach_synapse_coords(connectome, partition_size):
+    """ Add x, y, z coordinates for every synaptic connection in connectome.
+    
+    In the coordinate file, each synapse has a column containing the 'pre' neuron's
+    synapse coordinates, and a column containing the 'post' neuron's synapse 
+    coordinates.
+    
+    This function calculates the midpoint x,y,z coordinates for every 
+    synapse, and uses the product as the synapse's coordinates.
+    
+    """
+    print(f"{datetime.now().strftime("%H:%M:%S")} Attaching coordinates ...")    
+    connectome = connectome.persist()
+    coord_df = load_coord_file(partition_size)
+    
+    # Tag merge tasks with shuffle resource limit to reduce risk of memory 
+    # issues, then do merge
+    with annotate(resources = {"shuffle": 1}):
+        merged = connectome.merge(
+            coord_df, on=["pre","post"], how="inner").reset_index(drop = False)
+        
+    # Get x, y, z coordinates for each synapse
+    merged["x"] = merged["pre_pt_position_x"] + merged["post_pt_position_x"] / 2
+    merged["y"] = merged["pre_pt_position_y"] + merged["post_pt_position_y"] / 2
+    merged["z"] = merged["pre_pt_position_z"] + merged["post_pt_position_z"] / 2
+    merged = merged.drop(columns=["pre_pt_position_x", "post_pt_position_x",
+                                  "pre_pt_position_y", "post_pt_position_y",
+                                  "pre_pt_position_z", "post_pt_position_z"])
+    
+    # Coerce floats to ints (not worried about decimal precision)
+    merged["x"] = merged["x"].astype(np.int32)
+    merged["y"] = merged["y"].astype(np.int32)
+    merged["z"] = merged["z"].astype(np.int32)
+    
+    merged = merged.persist()
+    print(f"{datetime.now().strftime("%H:%M:%S")} Coordinates attached")
+    return merged
+
+
 def attach_neuropil_metadata(connectome):
     """ Add high-level neuropil regions and neuropil names to connectome. 
     
@@ -134,6 +251,7 @@ def attach_neuropil_metadata(connectome):
     # Load neuropils.csv
     path = os.path.join(LOCALDATA_DIR, "neuropils.csv")
     neuropil_metadata = ddf.read_csv(path)
+    neuropil_metadata["neuropil"] = neuropil_metadata["neuropil"].astype("category")
     
     # Merge with connectome on neuropil ID then return
     merged = connectome.merge(neuropil_metadata, on="neuropil", how="inner").persist()
@@ -142,51 +260,36 @@ def attach_neuropil_metadata(connectome):
     return merged
 
 
-def load_coord_file():
-    """ Load in edge coordinate data from 12.7 GB parquet file. 
-    It is safe to omit neurotransmitter probabilities because each edge has
-    the same neurotransmitter probability, and these probabilities have already
-    been normalised in the preceeding normalise_nt_probs step.
-    """
-    global DATA_DIR
-    coord_file_path = os.path.join(DATA_DIR, "flywire_synapses_783.parquet")
-    edge_coords = ddf.read_parquet( # Don't read in neurotransmitter prob cols!
-        coord_file_path, columns=["pre_pt_root_id", "post_pt_root_id", 
-                                  "pre_pt_position_x", "pre_pt_position_y", 
-                                  "pre_pt_position_z", "post_pt_position_x", 
-                                  "post_pt_position_y", "post_pt_position_z"])
-    edge_coords = edge_coords.rename(
-        columns={"pre_pt_root_id":"pre", "post_pt_root_id": "post"})
-    edge_coords = edge_coords.repartition(partition_size="200MB")
-    return edge_coords
 
 
-def attach_synapse_coords(connectome):
-    """ Add x, y, z coordinates for every synaptic connection in connectome.
+############### STAGE 2 : CLUSTER NEUROTRANSMITTER PROBABILITIES ###############
+
+
+def cluster_nt_probs(connectome, k):
+    """ Cluster synapses into k clusters based on neurotransmitter probability.
     
-    In the coordinate file, each synapse has a column containing the 'pre' neuron's
-    synapse coordinates, and a column containing the 'post' neuron's synapse 
-    coordinates.
+    This strategy implements k-means, followed by MAD-outlier detection to 
+    detect (geometric) core points as an approximation for full k-means batching.
     
-    This function calculates the midpoint x,y,z coordinates for every 
-    synapse, and uses the product as the synapse's coordinates.
+    This function runs on the CPU, but there is scope in the future to implement
+    a GPU-accelerated version of this function.
     
     """
-    print(f"{datetime.now().strftime("%H:%M:%S")} Attaching coordinates ...")    
-    coord_df = load_coord_file()
-    merged = connectome.merge(coord_df, on=["pre","post"], how="inner").persist()
+    # Extract neurotransmitter probabilities
+    X = connectome["gaba", "ach", "other"].to_dask_array(lengths = True)
     
-    # Get x, y, z coordinates for each synapse
-    merged["x"] = merged["pre_pt_position_x"] + merged["post_pt_position_x"] / 2
-    merged["y"] = merged["pre_pt_position_y"] + merged["post_pt_position_y"] / 2
-    merged["z"] = merged["pre_pt_position_z"] + merged["post_pt_position_z"] / 2
-    merged = merged.drop(columns=["pre_pt_position_x", "post_pt_position_x",
-                                  "pre_pt_position_y", "post_pt_position_y",
-                                  "pre_pt_position_z", "post_pt_position_z",
-                                  "syn_count"])
+    # Run CPU-based k-means
+    km.fit(X)
+    labels = km.labels_
+    labels_df = ddf.from_array(labels, columns="cluster_id")
     
-    print(f"{datetime.now().strftime("%H:%M:%S")} Coordinates attached")
-    return merged
+    # Uncluster points that are further than 2*MAD from cluster centre
+    ...
+    
+    # Attach cluster IDs to connectome df
+    connectome = connectome.assign(cluster_id=labels_df)    
+    
+
     
 
 def condense(connectome):

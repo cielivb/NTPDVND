@@ -24,3 +24,7 @@ docker run -p 8888:8888 -v ${PWD}:/project --memory=16g npcdcc_image
 Improvements:
 - HDBSCAN requires in memory data. Would be better to use a distributed and C++ optimised algorithm instead of the python implementation, but that is outside the scope of this project.
 - My dataset had little need for nodule size analysis. However, extending this project to a dataset with annotations would benefit from analysing the influence of nodule size as well.
+
+
+
+PyVista is a Python wrapper around VTK (The Visualization Toolkit), which uses GPU-accelerated rendering.
