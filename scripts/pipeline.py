@@ -1,5 +1,6 @@
 """ Main pipeline file - use for performance testing """
 
+import dask
 from dask import annotate
 from datetime import datetime
 import numpy as np
@@ -13,6 +14,7 @@ from dask.distributed import Client
 ROOT_DIR = os.path.dirname(os.path.dirname(__file__))
 DATA_DIR = os.path.join(ROOT_DIR, "data")
 LOCALDATA_DIR = os.path.join(ROOT_DIR, "localdata")
+TEMP_DIR = os.path.join(ROOT_DIR, "temp")
 COORD_FILE = os.path.join(DATA_DIR, "flywire_synapses_783.parquet")
 MAIN_FILE = os.path.join(DATA_DIR, "proofread_connections_783.parquet")
 
@@ -62,6 +64,54 @@ def downsample(connectome, num_requested_rows, allow_bytes):
     return sample
 
 
+def relax_memory_limits():
+    """ Let Dask use about half the machine's available RAM. 
+    
+    On client initialisation, Dask is allocated just over half the machine's
+    RAM. This is to help control RAM usage during compute-heavy and memory-
+    intensive out-of-dask stages of the pipeline.By default, Dask tries to use 
+    roughly half of its allocated RAM. This results in Dask underutilising RAM 
+    during Dask-heavy tasks.
+    
+    This function relaxes Dask's default memory configurations to improve
+    allocated RAM utilisation during shuffle-heavy operations.
+    
+    https://distributed.dask.org/en/stable/worker-memory.html
+    
+    """
+    dask.config.set({"distributed.worker.memory.target": 0.85,
+                     "distributed.worker.memory.spill": 0.90,
+                     "distributed.worker.memory.pause": 0.95,
+                     "distributed.worker.memory.terminate": 0.99})
+
+
+def restore_memory_limits():
+    """ Let Dask use the default worker memory configuration. """
+    dask.config.set({"distributed.worker.memory.target": 0.60,
+                     "distributed.worker.memory.spill": 0.70,
+                     "distributed.worker.memory.pause": 0.80,
+                     "distributed.worker.memory.terminate": 0.95})
+
+
+def make_plot(df, func_name, outpath):
+    """ Spawn a process to generate a plot using the specified function 
+    
+    The input dataframe should be adequately downsampled already.
+    
+    """
+    # Write dataframe to parquet file in temp directory
+    temp_file_path = os.path.join(
+        TEMP_DIR, 
+        os.path.basename(outpath)
+    ).replace(".png", ".parquet")
+    
+    # Call plotting function
+    subprocess.run(["python", "plotting.py", func_name, temp_file_path, outpath])
+    
+    # Remove temp parquet file
+    os.remove(temp_file_path)
+
+
 
 
 ##################################### INIT #####################################
@@ -73,7 +123,7 @@ def get_ram_allowance():
     and for guiding compute sizes later (e.g., for statistical analysis).
     """
     mem = psutil.virtual_memory().total # Available RAM in bytes
-    mem_gb = mem / (1024**3) # Available RAM in GiB
+    mem_gib = mem / (1024**3) # Available RAM in GiB
     allow_bytes = mem * 0.6
     allow_gib = mem_gib * 0.6
     print(f"{mem_gib:.1f} GiB available on machine; allowing {allow_gib:.1f} GiB")
@@ -109,8 +159,9 @@ def get_partition_size(num_threads, allow_bytes):
 def start_dask(num_threads, allow_bytes):
     """ Initialise a dask client. Number of threads = number of cores. """
     # Configure Dask Client using threads because pipeline is data transfer heavy.
-    # Capping number of shuffle tasks to number of threads because default 
-    # config caused memory issues (spilling to disk, pausing worker).
+    # Capping number of concurrent shuffle tasks to number of threads because 
+    # default config caused memory issues (spilling to disk, pausing worker) 
+    # due to the scheduler over-allocating tasks with respect to available RAM.
     client = Client(processes=False, 
                     threads_per_worker=num_threads, 
                     memory_limit=allow_bytes,
@@ -128,6 +179,7 @@ def load_connectome(file, partition_size):
     global MAIN_FILE
     if not file: file = MAIN_FILE
     print(f"{datetime.now().strftime("%H:%M:%S")} Loading connectome ...")
+    
     meta = {"pre_pt_root_id": np.int32,
             "post_pt_root_id": np.int32,
             "neuropil": "category",
@@ -149,6 +201,7 @@ def load_connectome(file, partition_size):
                    "gaba_avg": "gaba", "ach_avg": "ach", "glut_avg": "glut",
                    "oct_avg": "oct", "ser_avg": "ser", "da_avg": "da"})
     connectome = connectome.repartition(partition_size=partition_size).persist()
+    
     print(f"{datetime.now().strftime("%H:%M:%S")} Connectome loaded")
     return connectome
 
@@ -157,6 +210,12 @@ def normalise_nt_probs(connectome):
     """ Ensure probabilities sum to 1 for each edge, discarding NaN rows """
     print(f"{datetime.now().strftime("%H:%M:%S")} Normalising neurotransmitter probabilities ...")
     other_cols = ["glut", "oct", "ser", "da"]
+    
+    # Cast to float64 for increased accuracy in division
+    for col in ["gaba", "ach"] + other_cols:
+        connectome[col] = connectome[col].astype(np.float64)
+    
+    # Normalise
     connectome["other"] = connectome[other_cols].sum(axis=1)
     connectome["total_prob"] = connectome[["gaba", "ach", "other"]].sum(axis=1)
     connectome["gaba"] = connectome["gaba"] / connectome["total_prob"]
@@ -165,6 +224,11 @@ def normalise_nt_probs(connectome):
     connectome = connectome.drop(columns=["total_prob"])
     connectome = connectome.drop(columns=other_cols)
     connectome = connectome.dropna().persist(subset=["gaba", "ach", "other"]) # Drop NaNs
+    
+    # Recast to float32 to save RAM
+    for col in ["gaba", "ach", "other"]:
+        connectome[col] = connectome[col].astype(np.float32)
+    
     print(f"{datetime.now().strftime("%H:%M:%S")} Neurotransmitter probabilities normalised")
     return connectome
 
@@ -213,7 +277,8 @@ def attach_synapse_coords(connectome, partition_size):
     coord_df = load_coord_file(partition_size)
     
     # Tag merge tasks with shuffle resource limit to reduce risk of memory 
-    # issues, then do merge
+    # issues. This approach increases stability but reduces concurrency. See
+    # start_dask() for more info.
     with annotate(resources = {"shuffle": 1}):
         merged = connectome.merge(
             coord_df, on=["pre","post"], how="inner").reset_index(drop = False)

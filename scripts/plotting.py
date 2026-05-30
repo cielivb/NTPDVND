@@ -6,6 +6,7 @@ import math
 import matplotlib.pyplot as plt
 import mpltern
 import numpy as np
+import sys
 
 
 def _make_ternary_subplots(n: int):
@@ -18,13 +19,16 @@ def _make_ternary_subplots(n: int):
     return fig, axes
 
 
-def plot_overall_distribution(connectome, nsamples, file):
+def plot_overall_distribution(connectome, file):
     """ Save a ternary plot of the overall neurotransmitter prob distr """
-    gaba, ach, other = connectome[["gaba", "ach", "other"]].compute().to_numpy().T
-    #print(probs)
-    #gaba, ach, other = probs[0], probs[1], probs[2]
+    # Get numpy neurotransmitter probability arrays
+    df = connectome[["gaba", "ach", "other"]]
+    gaba = df["gaba"].to_numpy(copy=False)
+    ach  = df["ach"].to_numpy(copy=False)
+    other = df["other"].to_numpy(copy=False)
+    
     ax = plt.subplot(projection="ternary")
-    ax.hexbin(gaba, ach, other)
+    ax.hexbin(gaba, ach, other, gridsize=8)
     ax.set_tlabel("GABA Probability")
     ax.set_llabel("Acetylcholine Probability")
     ax.set_rlabel("Other Neurotransmitter Probability")
@@ -32,10 +36,11 @@ def plot_overall_distribution(connectome, nsamples, file):
     ax.laxis.set_label_position("tick1")
     ax.raxis.set_label_position("tick1")
     ax.set_title("Overall Nodule Neurotransmitter Probability "
-                 f"(Sample Size = {nsamples})", pad=50, size=14)
-    plt.tight_layout()
-    plt.savefig(file, format="svg", dpi=300)
+                 f"(Sample Size = {connectome.shape[0].item()})", pad=50, size=14)
     
+    plt.tight_layout()
+    plt.savefig(file, format="png", dpi=300)
+
 
 def plot_mean_nt_probs_by_neuropil_size(connectome, file):
     """ Create one ternary scatter plot where point colour corresponds to number 
@@ -116,3 +121,13 @@ def plot_hex_per_neuropil(connectome, file: str):
         axes[j].axis("off")
     plt.tight_layout() # fit subplots to figure size
     plt.savefig(file, format="svg", dpi=300)
+
+
+
+
+# Manage subprocess calls
+if __name__ == "__main__":
+    inpath, outpath = sys.argv[2], sys.argv[3]
+    pdf = pd.read_parquet(inpath)
+    if sys.argv[1] == "plot_overall_distribution":
+        plot_overall_distribution(pdf, outdir)
