@@ -2,7 +2,7 @@
 
 ## Replicate My Results!
 
-**⚠️ DISCLAIMER**: I have only tested this on Windows 11. I originally intended on making this a cloud computing project (thus OS-independent), but did not wish to pay $0.27 per month to host the large file on the cloud. The data is small enough for many machines to handle locally, so the admin is not worth it.
+**⚠️ DISCLAIMER**: I have only tested this on Windows 11 with 16 GB RAM. I originally intended on making this a cloud computing project (thus OS-independent), but did not wish to pay $0.27 per month to host the large file on the cloud. The data is small enough for many machines to handle locally, so the admin is not worth it.
 
 ### Steps Summary
 1. Clone repo
@@ -37,22 +37,8 @@ This project uses conda and renv to manage dependencies, and uses conda-forge as
 
 #### 1. Change directory to project root directory
 
-#### 2. Enforce conda-forge strict priority (recommended)
-This prevents implicit dependency checks against package sources besides conda-forge, which speeds up installation. You should only run this once. 
-```
-# Check if conda-forge channel is already present
-conda config --show channels
-
-# If conda-forge is not present:
-conda config --add channels conda-forge
-conda config --show channels # conda-forge should now appear
-
-# Once conda-forge is present:
-conda config --set channel_priority strict
-```
-
-#### 3. Create the conda environment
-This installs Python 3.12, R 4.3, and required Python packages.
+#### 2. Create the conda environment
+This installs Python 3.12, R 4.3, and required Python packages. This is environment contains large packages with many dependencies, so this may take a while. On my Windows 11 using mamba, this took ~11.50
 ```
 # If you use conda only:
 conda env create -f environment.yml
@@ -61,32 +47,20 @@ conda env create -f environment.yml
 mamba env create -f environment.yml
 ```
 
-#### 4. Undo step 2 of environment set-up (optional)
-This step is optional and only relevant if you ran step 2 to enforce conda-forge strict priority.
-```
-# To reset priority rules:
-conda config --set channel_priority flexible
-
-# To remove conda-forge channel:
-conda config --show channels # check what channels you currently have
-conda config --remove channels conda-forge
-conda config --show channels # conda-forge channel should be gone now
-```
-
-#### 4. Activate and validate environment
+#### 3. Activate and validate environment
 ```
 conda activate nta2 # Activate the environment called nta2
 python --version # Should show Python 3.12.x
 R --version # Should show R 4.3.x
 ```
 
-#### 5. Register environment as a Jupyter kernel
+#### 4. Register environment as a Jupyter kernel
 This makes the nta2 environment selectable as a kernel within Jupyter notebook.
 ```
 python -m ipykernel install --user --name=nta2 --display-name "Python (nta2)"
 ```
 
-#### 6. Restore packages from renv.lock
+#### 5. Restore packages from renv.lock
 Start R inside your activated environment:
 ```
 R
