@@ -38,10 +38,16 @@ This project uses conda and renv to manage dependencies, and uses conda-forge as
 #### 1. Change directory to project root directory
 
 #### 2. Enforce conda-forge strict priority (recommended)
-This prevents implicit dependency checks against other package sources, which speeds up installation. You should only run this once. 
+This prevents implicit dependency checks against package sources besides conda-forge, which speeds up installation. You should only run this once. 
 ```
-# If you use conda only:
+# Check if conda-forge channel is already present
+conda config --show channels
+
+# If conda-forge is not present:
 conda config --add channels conda-forge
+conda config --show channels # conda-forge should now appear
+
+# Once conda-forge is present:
 conda config --set channel_priority strict
 ```
 
