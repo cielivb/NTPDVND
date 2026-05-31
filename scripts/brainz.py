@@ -3,6 +3,7 @@ import numpy as np
 import os
 import pandas as pd
 import pyvista as pv
+from scipy.spatial import ConvexHull
 from datetime import datetime
 
 
@@ -99,3 +100,42 @@ def get_plotter(connectome, id_col, plot_unassigned=True):
 
 ################################################################################
 
+
+def get_convex_hull(neuropil_df):
+    """ Return the convex hull surrounding the xyz coords of a given neuropil """
+    coords = neuropil_df[["x", "y", "z"]].to_dask_array().compute() # Get coords
+    convex_hull_raw = ConvexHull(coords) # Get 3D convex hull
+    
+    # Build 1D pyvista faces array [3, i1, i2, i3, 3, i4, i5, i6, ...] from
+    # 3D hull.simplices array containing [i1, i2, i3], [i4, i5, i6], etc.
+    # Using 3 because 3 vertices per trianlge in the convex hull.
+    faces = np.hstack([[3, *triangle] for triangle in hull.simplices])
+    
+    mesh = pv.PolyData(coords, faces) # create pyvista mesh
+    return mesh
+
+
+def make_brain_map(connectome):
+    """ Generate an interactive brain map with neurotransmitter cluster toggles.
+    Connectome should be adequately downsampled before calling this func. """
+    plotter = pv.Plotter()
+    
+    # Render neuropil outlines
+    neuropils = list(connectome["neuropil"].unique().compute())
+    grouped = connectome.groupby("neuropil")
+    for neuropil in neuropils:
+        neuropil_df = grouped.getgroup(neuropil)
+        convex_hull = get_convex_hull(neuropil_df)
+        plotter.add_mesh(convex_hull, color="grey", opacity=0.05, show_edges=True)
+        
+    pass
+
+
+
+if __name__ == "__main__":
+    print("Call received!")
+    inpath, outdir = sys.argv[2], sys.argv[3]
+    print("Loading sampled connectome from file ...")
+    connectome = pd.read_parquet(inpath)
+    print("Making brain map ...")
+    make_brain_map(connectome)
