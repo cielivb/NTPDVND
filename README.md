@@ -43,10 +43,6 @@ This prevents implicit dependency checks against other package sources, which sp
 # If you use conda only:
 conda config --add channels conda-forge
 conda config --set channel_priority strict
-
-# If you use mamba (faster):
-mamba config --add channels conda-forge
-mamba config --set channel_priority strict
 ```
 
 #### 3. Create the conda environment
@@ -60,7 +56,7 @@ mamba env create -f environment.yml
 ```
 
 #### 4. Undo step 2 of environment set-up (optional)
-This step is optional and only relevant if you ran step 2 to enforce conda-forge strict priority. If using mamba, replace 'conda' with 'mamba'.
+This step is optional and only relevant if you ran step 2 to enforce conda-forge strict priority.
 ```
 # To reset priority rules:
 conda config --set channel_priority flexible
