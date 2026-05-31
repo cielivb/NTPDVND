@@ -1,10 +1,10 @@
-name: nta1
+name: nta2
 channels:
   - conda-forge
-  - defaults
 
 dependencies:
   - python=3.12
+  - r-base=4.3
   - dask # Big data computing
   - distributed # Big data computing
   - matplotlib # Visualisation
@@ -17,7 +17,7 @@ dependencies:
   - tqdm # Progress bars (.feather -> .parquet)
   - pip
   
-  # Install visualisation stack via pip
+  # Install 3D visualisation/pyvista stack via pip
   # - Trame packages don't have fully supported conda forge builds
   # - conda's VTK is uncooperative on Windows so using pip's VTK instead
   # - The install order is crucial - pyvista checks if trame packages are available
