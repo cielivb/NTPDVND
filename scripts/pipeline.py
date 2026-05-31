@@ -355,19 +355,23 @@ def attach_neuropil_metadata(connectome):
 
 ############### STAGE 2 : CLUSTER NEUROTRANSMITTER PROBABILITIES ###############
 
-def tag_clusters(connectome_nts):
+def tag_clusters(connectome):
     """ Attach column with neurotransmitter cluster assignment """
-    def _assign_tag(pdf):
-        tags = pd.Series("none")
-        tags[pdf[(connectome_nts["gaba"] > 0.85) & (pdf["ach"] < 0.1)]] = "gaba"
-        tags[(pdf["other"] > 0.85) & (pdf["ach"] < 0.1) & (pdf["gaba"] < 0.1)] = "other"
-        tags[(pdf["gaba"] < 0.15) & (pdf["other"] < 0.45) & (pdf["ach"]  > 0.55)] = "ach"
-        tags = tags.astype(category).cat.as_known()
-        return tags
-    tagged_series = connectome.map_partitions(
-        _assign_tag, meta=("cluster", "category")).reset_index(drop=True)
-    connectome = connectome.assign(cluster=tagged_series)
-    return connectome.persist()
+    tags = pd.Series("none", index=connectome.index)
+
+    tags[(connectome["gaba"] > 0.85) & (connectome["ach"] < 0.1)] = "gaba"
+    tags[(connectome["other"] > 0.85) & (connectome["ach"] < 0.1) 
+         & (connectome["gaba"] < 0.1)] = "other"
+    tags[(connectome["gaba"] < 0.15) & (connectome["other"] < 0.45) 
+         & (connectome["ach"] > 0.55)] = "ach"
+
+    tags = tags.astype(
+        pd.CategoricalDtype(
+            categories=["none", "gaba", "other", "ach"], ordered=False))
+
+    connectome = connectome.assign(cluster=tags)
+    return connectome
+
 
 
 #def cluster_nt_probs(connectome, k):
