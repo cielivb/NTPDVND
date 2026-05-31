@@ -93,3 +93,9 @@ def get_plotter(connectome, id_col, plot_unassigned=True):
                            point_size = 2)
     print(f"{datetime.now().strftime("%H:%M:%S")} Got PyVista plotter")
     return plotter
+
+
+
+
+################################################################################
+

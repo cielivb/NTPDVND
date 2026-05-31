@@ -29,6 +29,7 @@ COORD_FILE = os.path.join(DATA_DIR, "flywire_synapses_783.parquet")
 METADATA_FILE = os.path.join(DATA_DIR, "metadata.txt")
 
 
+
 ############################### PREPROCESS #####################################
 
 
@@ -153,9 +154,12 @@ def _all_tests_exist():
 
 def run():
     """ Convert raw data """
-    global MAIN_FILE_RAW, COORD_FILE_RAW, CLIENT
+    global MAIN_FILE_RAW, COORD_FILE_RAW, CLIENT, ROOT_DIR
     print("Notice: this may take some time if this is the first time "
           "running preprocess.py.\n")
+    
+    # Set up a temp directory if it doesn't exist
+    os.makedirs(os.path.join(ROOT_DIR, "temp"), exist_ok = True)
     
     # Convert feather files to parquet if not already converted
     if not _is_downloaded(MAIN_FILE_RAW, COORD_FILE_RAW):

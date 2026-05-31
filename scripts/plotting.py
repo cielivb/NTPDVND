@@ -6,29 +6,81 @@ import math
 import matplotlib.pyplot as plt
 import mpltern
 import numpy as np
+import os
+import pandas as pd
 import sys
+
 
 
 def _make_ternary_subplots(n: int):
     """ Create a matplotlib plot with n ternary subplots """
     num_cols = math.ceil(math.sqrt(n))
     num_rows = math.ceil(n / num_cols)
-    fig, axes = plt.subplots(num_rows, num_cols, figsize=(12,10),
+    fig, axes = plt.subplots(num_rows, num_cols, figsize=(5,5),
                              subplot_kw=dict(projection="ternary"))
+    
+    # Prevent ternary plots from overlapping
+    fig.subplots_adjust(
+        left=0.20,
+        right=0.25,
+        top=0.25,
+        bottom=0.20,
+        wspace=1,
+        hspace=3
+    )
+    
     axes = np.array(axes).reshape(-1)
+    
+    for ax in axes.flatten():
+        ax.tick_params(labelsize=6) # Make the tick labels smaller
+        
+        # Make the 'GABA', 'ACH', 'OTHER' labels smaller
+        ax.set_tlabel(ax.get_tlabel(), fontsize=8)
+        ax.set_llabel(ax.get_llabel(), fontsize=8)
+        ax.set_rlabel(ax.get_rlabel(), fontsize=8)        
+    
     return fig, axes
 
 
-def plot_overall_distribution(connectome, file):
+def plot_n_ternary(data, outpath):
+    """ Plot multiple ternary plots in a single image """
+    print("Plotting ...")
+    num_plots = len(data)
+    fig, axes = _make_ternary_subplots(num_plots)
+    
+    for i, ax in enumerate(axes[:num_plots]):
+        print(data[i][0])
+        # Compute dataframe i's probabilities into numpy arrays
+        gaba, ach, other = data[i][1].to_numpy(copy=False).T
+        
+        # Plot hexbin
+        hb = ax.hexbin(gaba, ach, other, gridsize=20)
+        ax.set_tlabel("GABA")
+        ax.set_llabel("ACH")
+        ax.set_rlabel("OTHER")
+        ax.taxis.set_label_position("tick1")
+        ax.laxis.set_label_position("tick1")
+        ax.raxis.set_label_position("tick1")
+        ax.set_title(data[i][0], size = 11, pad = 10)
+    
+    # Hide unused axes
+    for j in range(num_plots, len(axes)):
+        axes[j].axis("off")
+    
+    plt.tight_layout() # fit subplots to figure size
+    print("Saving ...")
+    plt.savefig(outpath, format="png", dpi=300)
+
+
+def plot_overall_distribution(df, file):
     """ Save a ternary plot of the overall neurotransmitter prob distr """
     # Get numpy neurotransmitter probability arrays
-    df = connectome[["gaba", "ach", "other"]]
-    gaba = df["gaba"].to_numpy(copy=False)
-    ach  = df["ach"].to_numpy(copy=False)
-    other = df["other"].to_numpy(copy=False)
+    print("Getting numpy neurotransmitter probability arrays ...")
+    gaba, ach, other = data[i][1].to_numpy(copy=False).T
     
-    ax = plt.subplot(projection="ternary")
-    ax.hexbin(gaba, ach, other, gridsize=8)
+    print("Creating hexplot ...")
+    ax = plt.subplot(figsize=(8,6), projection="ternary")
+    ax.hexbin(gaba, ach, other, gridsize=15)
     ax.set_tlabel("GABA Probability")
     ax.set_llabel("Acetylcholine Probability")
     ax.set_rlabel("Other Neurotransmitter Probability")
@@ -36,9 +88,11 @@ def plot_overall_distribution(connectome, file):
     ax.laxis.set_label_position("tick1")
     ax.raxis.set_label_position("tick1")
     ax.set_title("Overall Nodule Neurotransmitter Probability "
-                 f"(Sample Size = {connectome.shape[0].item()})", pad=50, size=14)
+                 f"(Sample Size = {df.shape[0]})", pad=50, size=12)
     
     plt.tight_layout()
+    
+    print("Saving PNG ...")
     plt.savefig(file, format="png", dpi=300)
 
 
@@ -107,7 +161,7 @@ def plot_hex_per_neuropil(connectome, file: str):
         gaba, ach, other = group[["gaba", "ach", "other"]].compute().to_numpy().T
         
         # Plot hexbin
-        hb = ax.hexbin(gaba, ach, other, gridsize=8)
+        hb = ax.hexbin(gaba, ach, other, gridsize=20)
         ax.set_tlabel("GABA")
         ax.set_llabel("ACH")
         ax.set_rlabel("OTHER")
@@ -124,10 +178,30 @@ def plot_hex_per_neuropil(connectome, file: str):
 
 
 
+def load_parquet_files(inpath):
+    """ Return a list of tuples containing formatted labels and respective dask 
+    dataframes 
+    """
+    data = []
+    df_folders = os.listdir(inpath)
+    for folder_name in df_folders:
+        folder_path = os.path.join(inpath, folder_name)
+        df = pd.read_parquet(folder_path)
+        label = os.path.basename(folder_path).removesuffix(".parquet").replace("_", " ")
+        print(f"New label: {label}")
+        data.append((label, df))
+    return data
+
 
 # Manage subprocess calls
 if __name__ == "__main__":
+    print("Received call")
     inpath, outpath = sys.argv[2], sys.argv[3]
-    pdf = pd.read_parquet(inpath)
+    print("Loading data from file")
+    data = load_parquet_files(inpath)
+    print("Routing ...")
     if sys.argv[1] == "plot_overall_distribution":
-        plot_overall_distribution(pdf, outdir)
+        pdf = data[0][1]
+        plot_overall_distribution(pdf, outpath)
+    elif sys.argv[1] == "plot_n_ternary":
+        plot_n_ternary(data, outpath)

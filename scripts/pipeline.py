@@ -7,11 +7,13 @@ import numpy as np
 import os
 import pandas as pd
 import psutil
+import subprocess
+import uuid
 
 from dask import dataframe as ddf
 from dask.distributed import Client
 
-ROOT_DIR = os.path.dirname(os.path.dirname(__file__))
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(ROOT_DIR, "data")
 LOCALDATA_DIR = os.path.join(ROOT_DIR, "localdata")
 TEMP_DIR = os.path.join(ROOT_DIR, "temp")
@@ -21,48 +23,55 @@ MAIN_FILE = os.path.join(DATA_DIR, "proofread_connections_783.parquet")
 
 ############################## HELPER FUNCTIONS ################################
 
-def estimate_df_ram(df):
-    """ Return estimated RAM usage of computed dataframe in bytes """
-    return df.memory_usage(deep = True).sum().compute()
-
-
+def get_bytes_per_row(df):
+    """ Return the average bytes per row over a sample of the dataframe """
+    subdf = df.partitions[0].head(1000) # Sample the first 1000 rows
+    bytes_per_row = subdf.memory_usage(deep=True).sum() / len(subdf)
+    return bytes_per_row
+    
+    
 def downsample(connectome, num_requested_rows, allow_bytes):
     """ Sample up to n rows from connectome, respecting RAM allowance.
     
     Sample approximately n rows from connectome dataframe if it will stay under 
     RAM allowance when computed, otherwise sample as many rows as possible within
-    the RAM allowance (allow_bytes). A hard limit of 0.2 * allow_bytes is used
-    to help constrain unmanaged RAM usage.
+    the RAM allowance (allow_bytes). A hard limit of 0.1 * allow_bytes is used
+    to help constrain unmanaged RAM usage - many operations on computed data
+    create extra data during their operation.
 
     Use to keep RAM in check during plotting and statistical analysis, where
     functions cannot operate on dask dataframes directly.
     
-    """
+    """    
     limiter = 0.1
     
     # Get the amount of RAM the request demands
-    row_count = connectome.shape[0].compute()
-    frac = num_requested_rows / row_count
-    sample = connectome.sample(frac=frac)
-    request_ram = estimate_df_ram(sample)
+    bytes_per_row = get_bytes_per_row(connectome)
+    request_ram = bytes_per_row * num_requested_rows
     
     # Use hard limit of limiter * allow_bytes for downsampled dataframe to reduce
     # both unmanaged RAM usage and disk spillage
     if request_ram < limiter * allow_bytes:
-        return sample # Within limit
-    
+        # Within limit - sample the dataframe
+        row_count = sum(connectome.map_partitions(len).compute())
+        if row_count <= num_requested_rows:
+            return connectome # Cannot sample more rows than are present
+        frac = num_requested_rows / row_count
+        print(row_count, num_requested_rows, frac)
+        sample = connectome.sample(frac=frac)        
+        return sample
+
     # Fallback - warn and return a dataframe as large as limiter * allow_bytes
     multiplier = request_ram / (limiter * allow_bytes)
-    frac = frac / multiplier
-    sample = connectome.sample(frac=frac)
-    num_rows = sample.shape[0].compute()
-    new_ram = estimate_df_ram(sample)
+    capped_num_rows = num_requested_rows / multiplier
+    frac = capped_num_rows / row_count
+    sample = connectome.sample(frac=frac)    
+    new_ram = get_bytes_per_row(sample) * capped_num_rows
     print(f"Number of requested rows ({num_requested_rows}) too large "
-          f"({request_ram/(1024**3):.1f} GiB). Using {num_rows} rows instead "
+          f"({request_ram/(1024**3):.1f} GiB). Using {capped_num_rows} rows instead "
           f"({new_ram/(1024**3):.1f} GiB).")
-    
     return sample
-
+        
 
 def relax_memory_limits():
     """ Let Dask use about half the machine's available RAM. 
@@ -93,23 +102,34 @@ def restore_memory_limits():
                      "distributed.worker.memory.terminate": 0.95})
 
 
-def make_plot(df, func_name, outpath):
+def make_plot(func_name: str, outpath: str, samples: list, labels: list):
     """ Spawn a process to generate a plot using the specified function 
     
-    The input dataframe should be adequately downsampled already.
+    The input dataframe/s in samples should be adequately downsampled already.
     
     """
-    # Write dataframe to parquet file in temp directory
-    temp_file_path = os.path.join(
-        TEMP_DIR, 
-        os.path.basename(outpath)
-    ).replace(".png", ".parquet")
+    temp_dir_path = os.path.join(TEMP_DIR, f"{uuid.uuid4()}")
+    
+    # Create a subdirectory for every df in samples
+    for df, label in zip(samples, labels):
+        df_dir_path = os.path.join(temp_dir_path, label)
+        df.to_parquet(df_dir_path)
     
     # Call plotting function
-    subprocess.run(["python", "plotting.py", func_name, temp_file_path, outpath])
-    
-    # Remove temp parquet file
-    os.remove(temp_file_path)
+    result = subprocess.run(
+            ["python", os.path.join(ROOT_DIR, "scripts", "plotting.py"), 
+             func_name, temp_dir_path, outpath],
+            capture_output = True,
+            check = False,
+            text = True
+    )
+    if result.returncode != 0:
+        print(f"STDOUT: {result.stdout}")
+        print(f"STDERR: {result.stderr}")
+
+
+def clean_temp():
+    raise NotImplementedError
 
 
 
@@ -195,7 +215,8 @@ def load_connectome(file, partition_size):
         columns = list(meta.keys()),
         meta = meta
     )
-    connectome["neuropil"] = connectome["neuropil"].astype("category")
+    connectome["neuropil"] = connectome["neuropil"].astype(
+         "category").cat.as_known()
     connectome = connectome.rename(
         columns = {"pre_pt_root_id": "pre", "post_pt_root_id": "post",
                    "gaba_avg": "gaba", "ach_avg": "ach", "glut_avg": "glut",
@@ -316,7 +337,12 @@ def attach_neuropil_metadata(connectome):
     # Load neuropils.csv
     path = os.path.join(LOCALDATA_DIR, "neuropils.csv")
     neuropil_metadata = ddf.read_csv(path)
-    neuropil_metadata["neuropil"] = neuropil_metadata["neuropil"].astype("category")
+    neuropil_metadata["neuropil"] = neuropil_metadata["neuropil"].astype(
+        "category").cat.as_known()
+    
+    # Coerce connectome neuropil column to use same categories as metadata df
+    cats = neuropil_metadata["neuropil"].cat.categories
+    connectome["neuropil"] = connectome["neuropil"].cat.set_categories(cats)
     
     # Merge with connectome on neuropil ID then return
     merged = connectome.merge(neuropil_metadata, on="neuropil", how="inner").persist()
@@ -329,58 +355,75 @@ def attach_neuropil_metadata(connectome):
 
 ############### STAGE 2 : CLUSTER NEUROTRANSMITTER PROBABILITIES ###############
 
-
-def cluster_nt_probs(connectome, k):
-    """ Cluster synapses into k clusters based on neurotransmitter probability.
-    
-    This strategy implements k-means, followed by MAD-outlier detection to 
-    detect (geometric) core points as an approximation for full k-means batching.
-    
-    This function runs on the CPU, but there is scope in the future to implement
-    a GPU-accelerated version of this function.
-    
-    """
-    # Extract neurotransmitter probabilities
-    X = connectome["gaba", "ach", "other"].to_dask_array(lengths = True)
-    
-    # Run CPU-based k-means
-    km.fit(X)
-    labels = km.labels_
-    labels_df = ddf.from_array(labels, columns="cluster_id")
-    
-    # Uncluster points that are further than 2*MAD from cluster centre
-    ...
-    
-    # Attach cluster IDs to connectome df
-    connectome = connectome.assign(cluster_id=labels_df)    
-    
-
-    
-
-def condense(connectome):
-    """ Extract edges and averaged synaptic xyz coords for use in HDBSCAN.
-    The full set of synapses is not necessary for HDBSCAN. """
-    print(f"{datetime.now().strftime("%H:%M:%S")} Condensing synapses to neural connections ...")
-    # Groupby 'pre' and 'post' then average x, y, z coordinates to get an 
-    # approximate coordinate corresponding to a neural connection location.
-    condensed = connectome.groupby(["pre", "post"])[["x","y","z"]].mean().persist()
-    print(f"{datetime.now().strftime("%H:%M:%S")} Condensed synapse coordinates to neural connections")
-    return condensed
+def tag_clusters(connectome_nts):
+    """ Attach column with neurotransmitter cluster assignment """
+    def _assign_tag(pdf):
+        tags = pd.Series("none")
+        tags[pdf[(connectome_nts["gaba"] > 0.85) & (pdf["ach"] < 0.1)]] = "gaba"
+        tags[(pdf["other"] > 0.85) & (pdf["ach"] < 0.1) & (pdf["gaba"] < 0.1)] = "other"
+        tags[(pdf["gaba"] < 0.15) & (pdf["other"] < 0.45) & (pdf["ach"]  > 0.55)] = "ach"
+        tags = tags.astype(category).cat.as_known()
+        return tags
+    tagged_series = connectome.map_partitions(
+        _assign_tag, meta=("cluster", "category")).reset_index(drop=True)
+    connectome = connectome.assign(cluster=tagged_series)
+    return connectome.persist()
 
 
-def extend(condensed, connectome):
-    """ Assign synapses to same clusters as parent neurons.
-    condensed contains 'pre','post','hdbscan_id'. 
-    """
-    print(f"{datetime.now().strftime("%H:%M:%S")} Extending cluster IDs to synapses ...")
-    extended = connectome.merge(
-        condensed, left_on=["pre", "post"], right_on=["pre", "post"], 
-        how="inner")
-    extended = extended.drop(columns = ["x_x", "y_x", "z_x"]).rename(
-        columns = {"x_y": "x", "y_y": "y", "z_y": "z"}).persist()
-    print(f"{datetime.now().strftime("%H:%M:%S")} Extended cluster IDs to synapses")
-    return extended
+#def cluster_nt_probs(connectome, k):
+    #""" Cluster synapses into k clusters based on neurotransmitter probability.
+    
+    #This strategy implements k-means, followed by MAD-outlier detection to 
+    #detect (geometric) core points as an approximation for full k-means batching.
+    
+    #This function runs on the CPU, but there is scope in the future to implement
+    #a GPU-accelerated version of this function.
+    
+    #"""
+    ## Extract neurotransmitter probabilities
+    #X = connectome["gaba", "ach", "other"].to_dask_array(lengths = True)
+    
+    ## Run CPU-based k-means
+    #km.fit(X)
+    #labels = km.labels_
+    #labels_df = ddf.from_array(labels, columns="cluster_id")
+    
+    ## Uncluster points that are further than 2*MAD from cluster centre
+    #...
+    
+    ## Attach cluster IDs to connectome df
+    #connectome = connectome.assign(cluster_id=labels_df)    
+    
 
+    
+
+#def condense(connectome):
+    #""" Extract edges and averaged synaptic xyz coords for use in HDBSCAN.
+    #The full set of synapses is not necessary for HDBSCAN. """
+    #print(f"{datetime.now().strftime("%H:%M:%S")} Condensing synapses to neural connections ...")
+    ## Groupby 'pre' and 'post' then average x, y, z coordinates to get an 
+    ## approximate coordinate corresponding to a neural connection location.
+    #condensed = connectome.groupby(["pre", "post"])[["x","y","z"]].mean().persist()
+    #print(f"{datetime.now().strftime("%H:%M:%S")} Condensed synapse coordinates to neural connections")
+    #return condensed
+
+
+#def extend(condensed, connectome):
+    #""" Assign synapses to same clusters as parent neurons.
+    #condensed contains 'pre','post','hdbscan_id'. 
+    #"""
+    #print(f"{datetime.now().strftime("%H:%M:%S")} Extending cluster IDs to synapses ...")
+    #extended = connectome.merge(
+        #condensed, left_on=["pre", "post"], right_on=["pre", "post"], 
+        #how="inner")
+    #extended = extended.drop(columns = ["x_x", "y_x", "z_x"]).rename(
+        #columns = {"x_y": "x", "y_y": "y", "z_y": "z"}).persist()
+    #print(f"{datetime.now().strftime("%H:%M:%S")} Extended cluster IDs to synapses")
+    #return extended
+
+
+
+########################### STAGE 3 : STATISTICS ###############################
 
 def get_neuropil_summary_stats(connectome):
     """ Aggregate synapse data by neuropil. 
@@ -413,17 +456,27 @@ def get_neuropil_summary_stats(connectome):
 
 
 def do_stats(r_path, result_dir, allow_bytes):
-    """ Take a sample then spawn a subprocess that runs the R stats script """
-    try:
-        subprocess.run(
-            [r_path, "statistical_analysis.R", result_dir], 
-            check=True, capture_output=True, text=True
-        )
-    except subprocess.CalledProcessError as e:
-        print("An error occurred in statistical_analysis.R")
-        print(f"STDOUT:\n{e.stdout}")
-        print(f"STDERR:\n{e.stderr}")
+    """ Spawn a subprocess that runs the R stats script 
     
+    The input dataframe should be downsampled already.
+    
+    """
+    # Write dataframe to parquet file in temp directory    
+    temp_file_path = os.path.join(TEMP_DIR, f"{uuid.uuid4()}.parquet")
+    df.to_parquet(temp_file_path)
+    
+    # Call R script
+    result = subprocess.run(
+        ["python", os.path.join(ROOT_DIR, "scripts", "statistical_analysis.R"),
+         temp_file_path, outdir],
+        capture_output = True,
+        check = True,
+        text = True
+    )
+
+
+
+################################### MAIN #######################################
 
 def main():
     pass
