@@ -2,7 +2,7 @@
 
 ## Replicate My Results!
 
-**⚠️ DISCLAIMER:**: I have only tested this on Windows 11.
+**⚠️ DISCLAIMER**: I have only tested this on Windows 11. I originally intended on making this a cloud computing project (thus OS-independent), but did not wish to pay $0.27 per month to host the large file on the cloud. The data is small enough for many machines to handle locally, so the admin is not worth it.
 
 ### Steps Summary
 1. Clone repo
