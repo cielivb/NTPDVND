@@ -59,8 +59,8 @@ conda env create -f environment.yml
 mamba env create -f environment.yml
 ```
 
-#### 4. Undo step 2 (optional)
-This step is optional and only relevant if you ran step 2. If using mamba, replace 'conda' with 'mamba'.
+#### 4. Undo step 2 of environment set-up (optional)
+This step is optional and only relevant if you ran step 2 to enforce conda-forge strict priority. If using mamba, replace 'conda' with 'mamba'.
 ```
 # To reset priority rules:
 conda config --set channel_priority flexible
@@ -86,7 +86,9 @@ python -m ipykernel install --user --name=nta2 --display-name "Python (nta2)"
 
 #### 6. Restore packages from renv.lock
 Start R inside your activated environment:
-```R```
+```
+R
+```
 It will take a moment for R to start up. Once R is running:
 ```
 install.packages("renv") # Required for next command
