@@ -373,61 +373,15 @@ def tag_clusters(connectome):
     return connectome
 
 
-
-#def cluster_nt_probs(connectome, k):
-    #""" Cluster synapses into k clusters based on neurotransmitter probability.
-    
-    #This strategy implements k-means, followed by MAD-outlier detection to 
-    #detect (geometric) core points as an approximation for full k-means batching.
-    
-    #This function runs on the CPU, but there is scope in the future to implement
-    #a GPU-accelerated version of this function.
-    
-    #"""
-    ## Extract neurotransmitter probabilities
-    #X = connectome["gaba", "ach", "other"].to_dask_array(lengths = True)
-    
-    ## Run CPU-based k-means
-    #km.fit(X)
-    #labels = km.labels_
-    #labels_df = ddf.from_array(labels, columns="cluster_id")
-    
-    ## Uncluster points that are further than 2*MAD from cluster centre
-    #...
-    
-    ## Attach cluster IDs to connectome df
-    #connectome = connectome.assign(cluster_id=labels_df)    
-    
-
-    
-
-#def condense(connectome):
-    #""" Extract edges and averaged synaptic xyz coords for use in HDBSCAN.
-    #The full set of synapses is not necessary for HDBSCAN. """
-    #print(f"{datetime.now().strftime("%H:%M:%S")} Condensing synapses to neural connections ...")
-    ## Groupby 'pre' and 'post' then average x, y, z coordinates to get an 
-    ## approximate coordinate corresponding to a neural connection location.
-    #condensed = connectome.groupby(["pre", "post"])[["x","y","z"]].mean().persist()
-    #print(f"{datetime.now().strftime("%H:%M:%S")} Condensed synapse coordinates to neural connections")
-    #return condensed
+def make_brain_map(connectome)
 
 
-#def extend(condensed, connectome):
-    #""" Assign synapses to same clusters as parent neurons.
-    #condensed contains 'pre','post','hdbscan_id'. 
-    #"""
-    #print(f"{datetime.now().strftime("%H:%M:%S")} Extending cluster IDs to synapses ...")
-    #extended = connectome.merge(
-        #condensed, left_on=["pre", "post"], right_on=["pre", "post"], 
-        #how="inner")
-    #extended = extended.drop(columns = ["x_x", "y_x", "z_x"]).rename(
-        #columns = {"x_y": "x", "y_y": "y", "z_y": "z"}).persist()
-    #print(f"{datetime.now().strftime("%H:%M:%S")} Extended cluster IDs to synapses")
-    #return extended
+######################## STAGE 3 : NEUROPIL VISUALISATIONS #####################
+
+# Mostly accommodated by plotting.py
 
 
-
-########################### STAGE 3 : STATISTICS ###############################
+########################### STAGE 4 : STATISTICS ###############################
 
 def get_neuropil_summary_stats(connectome):
     """ Aggregate synapse data by neuropil. 
