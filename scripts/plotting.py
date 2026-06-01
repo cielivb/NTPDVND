@@ -35,9 +35,9 @@ def _make_ternary_subplots(n: int):
         ax.tick_params(labelsize=6) # Make the tick labels smaller
         
         # Make the 'GABA', 'ACH', 'OTHER' labels smaller
-        ax.set_tlabel(ax.get_tlabel(), fontsize=8)
-        ax.set_llabel(ax.get_llabel(), fontsize=8)
-        ax.set_rlabel(ax.get_rlabel(), fontsize=8)        
+        ax.set_tlabel(ax.get_tlabel(), fontsize=6)
+        ax.set_llabel(ax.get_llabel(), fontsize=6)
+        ax.set_rlabel(ax.get_rlabel(), fontsize=6)        
     
     return fig, axes
 
@@ -165,7 +165,6 @@ def plot_neuropils_in_region(data, region, outpath):
     grouped = data.groupby("neuropil")
     num_plots = len(neuropils)
     fig, axes = _make_ternary_subplots(num_plots)
-    fig.set_title(region)
     
     for i, ax in enumerate(axes[:num_plots]):
         

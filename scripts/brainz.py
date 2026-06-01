@@ -52,21 +52,36 @@ def make_brain_map(connectome, outdir):
         convex_hull = get_convex_hull(neuropil_df)
         del neuropil_df
         plotter.add_mesh(convex_hull, color="grey", opacity=0.05, show_edges=True)
-        
-    # Render connectome coordinates
-    grouped2 = connectome.groupby("cluster")
-    gaba_cloud = grouped2.get_group("gaba")[["x", "y", "z"]].to_numpy(dtype=np.float32, copy=False)
-    ach_cloud = grouped2.get_group("ach")[["x", "y", "z"]].to_numpy(dtype=np.float32, copy=False)
-    other_cloud = grouped2.get_group("other")[["x", "y", "z"]].to_numpy(dtype=np.float32, copy=False)
-    none_cloud = grouped2.get_group("none")[["x", "y", "z"]].to_numpy(dtype=np.float32, copy=False)
     
+    # Set up coordinate groups
+    grouped2 = connectome.groupby("cluster")
+    gaba_cloud = grouped2.get_group("gaba")[["x", "y", "z"]].to_numpy(
+        dtype=np.float32, copy=False)
+    ach_cloud = grouped2.get_group("ach")[["x", "y", "z"]].to_numpy(
+        dtype=np.float32, copy=False)
+    other_cloud = grouped2.get_group("other")[["x", "y", "z"]].to_numpy(
+        dtype=np.float32, copy=False)
+    low_gaba_noise_cloud = grouped2.get_group("low_gaba_noise")[["x", "y", "z"]].to_numpy(
+        dtype=np.float32, copy=False)
+    low_ach_noise_cloud = grouped2.get_group("low_ach_noise")[["x", "y", "z"]].to_numpy(
+        dtype=np.float32, copy=False)
+    misc_noise_cloud = grouped2.get_group("misc_noise")[["x", "y", "z"]].to_numpy(
+        dtype=np.float32, copy=False)
+    
+    # Add coordinates to plotter and store result for toggling vis later
     actors = {
         "gaba_actor": plotter.add_points(gaba_cloud, color="blue", point_size=3),
         "ach_actor": plotter.add_points(ach_cloud, color="yellow", point_size=3),
         "other_actor": plotter.add_points(other_cloud, color="pink", point_size=3),
-        "none_actor": plotter.add_points(none_cloud, color="grey", point_size=3)
+        "low_gaba_noise_actor": plotter.add_points(low_gaba_noise_cloud, 
+                                                   color="grey", point_size=3),
+        "low_ach_noise_actor": plotter.add_points(other_cloud, color="grey", 
+                                                  point_size=3),        
+        "misc_noise_actor": plotter.add_points(other_cloud, color="grey", 
+                                               point_size=3)
     }
-    del gaba_cloud, ach_cloud, other_cloud, none_cloud    
+    del gaba_cloud, ach_cloud, other_cloud, low_gaba_noise_cloud
+    del low_ach_noise_cloud, misc_noise_cloud
     for actor in actors.values():
         actor.SetVisibility(True)
 
@@ -75,7 +90,7 @@ def make_brain_map(connectome, outdir):
 
 
 def save(plotter, actors, outdir):
-    """ Save 3D interactive visualisation and above/side/front screenshots """
+    """ Save 3D interactive visualisations """
     print(f"{datetime.now().strftime("%H:%M:%S")} Saving plots ...")
     
     # Export brain map with all points visible
@@ -89,6 +104,21 @@ def save(plotter, actors, outdir):
         label = actor.strip("_actor")
         plotter.export_html(os.path.join(outdir, f"bm_{label}.html"))
         actor.SetVisibility(False)
+    
+    # Export brain maps with only non-noise on
+    actors["gaba_actor"].SetVisibility(True)
+    actors["ach_actor"].SetVisibility(True)
+    actors["other_actor"].SetVisibility(True)
+    plotter.export_html(os.path.join(outdir, "bm_mains.html"))
+    actors["gaba_actor"].SetVisibility(False)
+    actors["ach_actor"].SetVisibility(False)
+    actors["other_actor"].SetVisibility(False)
+    
+    # Export brain maps with only noise on
+    actors["low_gaba_noise_actor"].SetVisibility(True)
+    actors["low_ach_noise_actor"].SetVisibility(True)
+    actors["misc_noise_actor"].SetVisibility(True)
+    plotter.export_html(os.path.join(outdir, "bm_noise.html"))    
     
     print(f"{datetime.now().strftime("%H:%M:%S")} Plots saved")
 

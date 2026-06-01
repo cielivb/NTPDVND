@@ -9,6 +9,7 @@ import pandas as pd
 import psutil
 import subprocess
 import uuid
+import time
 
 from dask import dataframe as ddf
 from dask.distributed import Client
@@ -482,4 +483,90 @@ def do_stats(r_path, result_dir, allow_bytes):
 ################################### MAIN #######################################
 
 def main():
-    pass
+    """ This section mimics the Jupyter Notebook code """
+    
+    # Set up environment
+    num_threads = 4
+    DATASET = ""
+    session_id = f"{DATASET.strip(".parquet")}_{num_threads}_threads"
+    OUTDIR = os.path.join(ROOT_DIR, "results", session_id)
+    start_time = time.time()
+    
+    client = start_dask(num_threads=num_threads, allow_bytes=get_ram_allowance())
+    PARTITION_SIZE = get_partition_size(num_threads = num_threads, allow_bytes = allow_bytes)    
+    dask.config.set({"dataframe.shuffle.method": "tasks"})
+    
+    # Processing
+    relax_memory_limits()
+    connectome = load_connectome(DATASET, PARTITION_SIZE)
+    connectome = normalise_nt_probs(connectome)
+    connectome = attach_synapse_coords(connectome, PARTITION_SIZE)
+    connectome = attach_neuropil_metadata(connectome)
+    restore_memory_limits()
+        
+    connectome_nts = connectome[["gaba","ach","other"]]
+    
+    # Sample connectome - hexbin plotting is memory-intensive and don't need every data point to get idea of distribution    
+    sample = pipeline.downsample(connectome_nts, 50_000, allow_bytes)
+    filename = os.path.join(OUTDIR, "init_overall_distribution.png")
+    pipeline.make_plot("plot_n_ternary", filename, samples = [sample], labels = ["Neurotransmitter_Probabilities_In_The_Drosophila_Connectome"])
+    
+    # Extract and visualise the four initial clusters
+    connectome = pipeline.tag_clusters(connectome)
+    sample = pipeline.downsample(connectome, 50_000, allow_bytes)
+    
+    # Plot hex plots of new cluster classifications
+    grouped = sample.groupby("cluster")
+    high_gaba_sample = grouped.get_group("gaba")
+    high_ach_sample = grouped.get_group("ach")
+    high_other_sample = grouped.get_group("other")
+    unclassified_sample = grouped.get_group("none")
+    
+    filename = os.path.join(OUTDIR, "initial_clusters.png")
+    pipeline.make_plot("plot_n_ternary", filename, 
+                       samples = [high_gaba_sample, high_ach_sample, high_other_sample, unclassified_sample], 
+                       labels = ["High_GABA", "High_ACH", "High_OTHER", "Unclassified"])    
+    
+    # Classify unclassified synapses into gaba_noise, ach_noise, and noise.
+    # Taking a larger sample this time because I want more power in my analysis.
+    connectome = pipeline.tag_unclassified_clusters(connectome)
+    print("All synapses tagged!")
+    sample = pipeline.downsample(connectome, 500_000, allow_bytes)    
+    # Plot hex plots of new cluster classifications
+    grouped = sample.groupby("cluster")
+    high_gaba_sample = grouped.get_group("gaba")
+    high_ach_sample = grouped.get_group("ach")
+    high_other_sample = grouped.get_group("other")
+    low_ach_noise_sample = grouped.get_group("low_ach_noise")
+    low_gaba_noise_sample = grouped.get_group("low_gaba_noise")
+    misc_noise_sample = grouped.get_group("misc_noise")
+    
+    filename = os.path.join(OUTDIR, "final_clusters.png")
+    pipeline.make_plot("plot_n_ternary", filename, 
+                       samples = [high_gaba_sample, high_ach_sample, high_other_sample, 
+                                  low_ach_noise_sample, low_gaba_noise_sample, misc_noise_sample], 
+                       labels = ["High_GABA", "High_ACH", "High_OTHER",
+                                 "Low_ACH_Noise", "Low_GABA_Noise", "Misc_Noise"])
+    
+    # Skipping brain map section because that flunked
+    
+    # Summary stats per neuropil
+    neuropils = pipeline.get_neuropil_summary_stats(connectome)
+    filename = os.path.join(OUTDIR, "neuropil_summaries.csv")
+    neuropils.to_csv(filename)
+
+    
+    # Neuropil neurotransmitter probability distributions by region
+    grouped_regions = sample.groupby("region")
+    regions = list(sample["region"].unique().compute())
+    for region in regions:
+        df = grouped_regions.get_group(region)
+        filename = os.path.join(OUTDIR, f"neuropil_distributions_{region}.png")
+        pipeline.make_plot("plot_neuropils_in_region", filename,
+                          samples = [df], labels = [region])
+        
+        
+
+    # End timer
+    end_time = time.time()
+    print(f"Runtime: {end - start:.2f} seconds; Num-threads: {num_threads}")
