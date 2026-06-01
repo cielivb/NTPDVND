@@ -10,7 +10,6 @@ import numpy as np
 import os
 import pandas as pd
 import pyvista as pv
-from pyvista.trame import TramePlotter
 from trame.widgets import vuetify
 from scipy.spatial import ConvexHull
 from datetime import datetime
@@ -43,7 +42,7 @@ def get_convex_hull(neuropil_df):
 def make_brain_map(connectome, outdir):
     """ Generate an interactive brain map with neurotransmitter cluster toggles.
     Connectome should be adequately downsampled before calling this func. """
-    plotter = TramePlotter()
+    plotter = pv.Plotter()
     
     # Render neuropil outlines
     neuropils = list(connectome["neuropil"].unique())

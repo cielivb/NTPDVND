@@ -4,11 +4,14 @@ channels:
 
 dependencies:
   - python=3.12
-  - r-base=4.3
+  - r-base=4.4
   - dask # Big data computing
   - distributed # Big data computing
+  - ipykernel # Register conda environment with Jupyter
+  - ipywidgets # Pyvista UI controls
   - matplotlib # Visualisation
   - mpltern # Visualisation (ternary plots)
+  - notebook # Jupyter Notebook
   - numpy # In-memory arrays
   - pandas # In-memory dataframes
   - psutil # .virtual_memory() to get machine RAM

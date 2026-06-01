@@ -51,7 +51,8 @@ def plot_n_ternary(data, outpath):
     for i, ax in enumerate(axes[:num_plots]):
         print(data[i][0])
         # Compute dataframe i's probabilities into numpy arrays
-        gaba, ach, other = data[i][1].to_numpy(copy=False).T
+        df = data[i][1][["gaba", "ach", "other"]]
+        gaba, ach, other = df.to_numpy(copy=False).T
         
         # Plot hexbin
         hb = ax.hexbin(gaba, ach, other, gridsize=20)
@@ -72,35 +73,14 @@ def plot_n_ternary(data, outpath):
     plt.savefig(outpath, format="png", dpi=300)
 
 
-def plot_overall_distribution(df, file):
-    """ Save a ternary plot of the overall neurotransmitter prob distr """
-    # Get numpy neurotransmitter probability arrays
-    print("Getting numpy neurotransmitter probability arrays ...")
-    gaba, ach, other = data[i][1].to_numpy(copy=False).T
-    
-    print("Creating hexplot ...")
-    ax = plt.subplot(figsize=(8,6), projection="ternary")
-    ax.hexbin(gaba, ach, other, gridsize=15)
-    ax.set_tlabel("GABA Probability")
-    ax.set_llabel("Acetylcholine Probability")
-    ax.set_rlabel("Other Neurotransmitter Probability")
-    ax.taxis.set_label_position("tick1")
-    ax.laxis.set_label_position("tick1")
-    ax.raxis.set_label_position("tick1")
-    ax.set_title("Overall Nodule Neurotransmitter Probability "
-                 f"(Sample Size = {df.shape[0]})", pad=50, size=12)
-    
-    plt.tight_layout()
-    
-    print("Saving PNG ...")
-    plt.savefig(file, format="png", dpi=300)
-
-
-def plot_mean_nt_probs_by_neuropil_size(connectome, file):
+def plot_mean_nt_probs_by_neuropil_size(data, outfile):
     """ Create one ternary scatter plot where point colour corresponds to number 
     of synapses in a neuropil, and each point is the average probability within a
     neuropil. connectome dataframe must be pre-aggregated. """
-    neuropil_size, gaba, ach, other = connectome[
+    num_plots = len(data)
+    fig, axes = _make_ternary_subplots(num_plots)
+    
+    neuropil_size, gaba, ach, other = data[0][1][
         ["neuropil_size", "gaba_mean", "ach_mean", "other_mean"]
         ].compute().to_numpy().T
     
@@ -113,19 +93,20 @@ def plot_mean_nt_probs_by_neuropil_size(connectome, file):
     ax.taxis.set_label_position("tick1")
     ax.laxis.set_label_position("tick1")
     ax.raxis.set_label_position("tick1")
-    ax.set_title("Mean Neurotransmitter Probabilities by Neuropil Size", size=14, pad=50)
+    ax.set_title("Mean Neurotransmitter Probabilities by Neuropil Size", 
+                 size=14, pad=50)
     colour_bar = fig.colorbar(scattered, shrink=0.7)
     colour_bar.ax.set_title("Synapse Count", size=10)
     plt.tight_layout()
-    plt.savefig(file, format="svg", dpi=300)
+    plt.savefig(outfile, format="png", dpi=300)
 
 
-def plot_variance_by_neuropil_size(connectome, file):
+def plot_variance_by_neuropil_size(connectome, outfile):
     """ Create a bar chart showing neuropil neurotransmitter variances, sorted 
     by neuropil size """
     sorted_connectome = connectome.sort_values("neuropil_size").reset_index(drop=False)
     neuropil, gaba, ach, other = sorted_connectome[
-        ["neuropil", "gaba_var", "ach_var", "other_var"]].compute().to_numpy().T
+        ["neuropil", "gaba_var", "ach_var", "other_var"]].to_numpy().T
     
     # Set bar positions
     bar_width = 0.25
@@ -142,7 +123,7 @@ def plot_variance_by_neuropil_size(connectome, file):
     ax.set_xticklabels(neuropil)
     ax.legend(title="Neurotransmitter Probability Variances", ncol=3)
     plt.tight_layout()
-    plt.savefig(file, format="svg", dpi=300)
+    plt.savefig(outfile, format="png", dpi=300)
 
 
 def plot_hex_per_neuropil(connectome, file: str):
@@ -200,8 +181,14 @@ if __name__ == "__main__":
     print("Loading data from file")
     data = load_parquet_files(inpath)
     print("Routing ...")
+    
     if sys.argv[1] == "plot_overall_distribution":
         pdf = data[0][1]
         plot_overall_distribution(pdf, outpath)
+        
     elif sys.argv[1] == "plot_n_ternary":
         plot_n_ternary(data, outpath)
+    
+    elif sys.argv[1] == "plot_mean_nt_probs_by_neuropil_size":
+        neuropil_summary_pdf = data[0][1]
+        plot_mean_nt_probs_by_neuropil_size(neuropil_summary_pdf, outpath)

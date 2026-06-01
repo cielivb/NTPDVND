@@ -57,7 +57,6 @@ def downsample(connectome, num_requested_rows, allow_bytes):
         if row_count <= num_requested_rows:
             return connectome # Cannot sample more rows than are present
         frac = num_requested_rows / row_count
-        print(row_count, num_requested_rows, frac)
         sample = connectome.sample(frac=frac)        
         return sample
 
@@ -108,7 +107,7 @@ def make_plot(func_name: str, outpath: str, samples: list, labels: list):
     The input dataframe/s in samples should be adequately downsampled already.
     
     """
-    temp_dir_path = os.path.join(TEMP_DIR, f"{uuid.uuid4()}")
+    temp_dir_path = make_temp_path()
     
     # Create a subdirectory for every df in samples
     for df, label in zip(samples, labels):
@@ -126,6 +125,12 @@ def make_plot(func_name: str, outpath: str, samples: list, labels: list):
     if result.returncode != 0:
         print(f"STDOUT: {result.stdout}")
         print(f"STDERR: {result.stderr}")
+
+
+def make_temp_path():
+    """ Generate a temporary file path """
+    temp_path = os.path.join(TEMP_DIR, f"{uuid.uuid4()}")
+    return temp_path
 
 
 def clean_temp():
@@ -353,35 +358,60 @@ def attach_neuropil_metadata(connectome):
 
 
 
-############### STAGE 2 : CLUSTER NEUROTRANSMITTER PROBABILITIES ###############
+########## STAGE 2 : IDENTIFY NEUROTRANSMITTER PROBABILITY CLUSTERS ##########
+
 
 def tag_clusters(connectome):
-    """ Attach column with neurotransmitter cluster assignment """
-    tags = pd.Series("none", index=connectome.index)
+    """ Attach column with initial neurotransmitter cluster assignment """
 
-    tags[(connectome["gaba"] > 0.85) & (connectome["ach"] < 0.1)] = "gaba"
-    tags[(connectome["other"] > 0.85) & (connectome["ach"] < 0.1) 
-         & (connectome["gaba"] < 0.1)] = "other"
-    tags[(connectome["gaba"] < 0.15) & (connectome["other"] < 0.45) 
-         & (connectome["ach"] > 0.55)] = "ach"
+    def _tag(pdf):
+        tags = pd.Series("none", index=pdf.index)
+        tags[(pdf["gaba"] > 0.85) & (pdf["ach"] < 0.1)] = "gaba"
+        tags[(pdf["other"] > 0.85) & (pdf["ach"] < 0.1) &
+             (pdf["gaba"] < 0.1)] = "other"
+        tags[(pdf["gaba"] < 0.15) & (pdf["other"] < 0.45) &
+             (pdf["ach"] > 0.55)] = "ach"
 
-    tags = tags.astype(
-        pd.CategoricalDtype(
-            categories=["none", "gaba", "other", "ach"], ordered=False))
+        return tags
 
-    connectome = connectome.assign(cluster=tags)
-    return connectome
+    tags = connectome.map_partitions(_tag, meta=("cluster", "category"))
+    return connectome.assign(cluster=tags).persist()
 
 
-def make_brain_map(connectome)
+def tag_unclassified_clusters(connectome):
+    """ Update 'none' values in cluster column with sub-classifications """
+    
+    def _tag(pdf):
+        tags = pd.Series("misc_noise", index=pdf.index)
+        tags[(pdf["cluster"] == "none") & 
+             (pdf["ach"] < 0.15) & 
+             (pdf["gaba"] > 0.1)] = "low_ach_noise"
+        tags[(pdf["cluster"] == "none") & 
+             (pdf["gaba"] <= 0.15) & 
+             (pdf["ach"] >= 0.1)] = "low_gaba_noise"
+        return tags
+    tags = connectome.map_partitions(_tag, meta=("cluster", "category"))
+    return connectome.assign(cluster=tags).persist()
+
+
+def make_brain_map(sample_path: str, outdir: str):
+    """ Spawn a subprocess that generates an interactive 3D brain map """
+    result = subprocess.run(
+        ["python", os.path.join(ROOT_DIR, "scripts", "brainz.py"), 
+         sample_path, outdir],
+        capture_output = True,
+        check = False,
+        text = True
+    )
+    if result.returncode != 0:
+        print(f"STDOUT: {result.stdout}")
+        print(f"STDERR: {result.stderr}")        
+
+
 
 
 ######################## STAGE 3 : NEUROPIL VISUALISATIONS #####################
 
-# Mostly accommodated by plotting.py
-
-
-########################### STAGE 4 : STATISTICS ###############################
 
 def get_neuropil_summary_stats(connectome):
     """ Aggregate synapse data by neuropil. 
@@ -413,15 +443,19 @@ def get_neuropil_summary_stats(connectome):
     return merged_aggregated
 
 
+
+########################### STAGE 4 : STATISTICS ###############################
+
+
 def do_stats(r_path, result_dir, allow_bytes):
     """ Spawn a subprocess that runs the R stats script 
     
     The input dataframe should be downsampled already.
     
     """
-    # Write dataframe to parquet file in temp directory    
-    temp_file_path = os.path.join(TEMP_DIR, f"{uuid.uuid4()}.parquet")
-    df.to_parquet(temp_file_path)
+    # Write dataframe to parquet dataset folder in temp directory    
+    temp_path = make_temp_path()
+    df.to_parquet(temp_path)
     
     # Call R script
     result = subprocess.run(
