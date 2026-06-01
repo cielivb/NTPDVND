@@ -61,17 +61,17 @@ mamba env create -f environment.yml
 
 #### 3. Activate and validate environment
 ```
-conda activate nta2 # Activate the environment called nta2
+conda activate nta3 # Activate the environment called nta3
 python --version # Should show Python 3.12.x
 R --version # Should show R 4.3.x
 ```
 
 #### 4. Register environment as a Jupyter kernel
-This makes the nta2 environment selectable as a kernel within Jupyter notebook.
+This makes the nta3 environment selectable as a kernel within Jupyter notebook.
 ```
-python -m ipykernel install --user --name=nta2 --display-name "Python (nta2)"
+python -m ipykernel install --user --name=nta3 --display-name "Python (nta3)"
 ```
-
+<del>
 #### 5. Restore packages from renv.lock
 Start R inside your activated environment:
 ```
@@ -83,6 +83,7 @@ install.packages("renv") # You will be prompted to select a mirror - select the 
 renv::restore() # Install packages specified in renv.lock
 q() # Exit R session
 ```
+</del>
 
 ### 4. Open Jupyter notebook
 
@@ -90,7 +91,7 @@ You should still be in your project root directory, and your environment should 
 ```
 jupyter notebook
 ```
-This will take a few moments. A browser should automatically open showing your root directory. Next, click on either .ipynb file (whichever you want to open). Once open, select the Python (nta2) kernel in the top right corner to ensure the correct packages are used in your Jupyter Notebook session.
+This will take a few moments. A browser should automatically open showing your root directory. Next, click on the .ipynb file. Once open, select the Python (nta3) kernel in the top right corner to ensure the correct packages are used in your Jupyter Notebook session.
 
 
 ## Original Data Source
@@ -99,8 +100,3 @@ Full raw data metadata is available at the data source repo: [https://zenodo.org
 ### Files used
 1. proofread_connections_783.feather - the primary dataset containing proofread neural connections
 2. flywire_synapses_783.feather - supplies synapse coordinates, handy for 3D visualisation and weighting compositional analyses
-
-
-
-### Downloading required files
-
