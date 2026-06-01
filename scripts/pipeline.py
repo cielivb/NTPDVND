@@ -10,6 +10,7 @@ import psutil
 import subprocess
 import uuid
 import time
+import sys
 
 from dask import dataframe as ddf
 from dask.distributed import Client
@@ -484,29 +485,20 @@ def do_stats(r_path, result_dir, allow_bytes):
 
 ################################### MAIN #######################################
 
-def main():
-    """ This section mimics the Jupyter Notebook code """
-    preprocess.run() # Generates test files if not already present.
-    
-    # Set up environment
-    num_threads = 4
-    DATASET = os.path.join(DATA_DIR, "proofread_connections_783.parquet") # ~1.05 GB    
-    #DATASET = os.path.join(DATA_DIR, "large.parquet") # ~ 583 MB
-    #DATASET = os.path.join(DATA_DIR, "medium.parquet") # ~ 272 MB
-    #DATASET = os.path.join(DATA_DIR, "small.parquet") # ~ 56 MB
-    #DATASET = os.path.join(DATA_DIR, "tiny.parquet") # ~ 215 KB
-    
-    session_id = f"{DATASET.strip(".parquet")}_{num_threads}_threads"
+def main(num_threads, dataset):
+    """ This section mimics the Jupyter Notebook code """    
+    session_id = f"{dataset.strip(".parquet")}_{num_threads}_threads"
     OUTDIR = os.path.join(ROOT_DIR, "results", session_id)
     start_time = time.time()
     
-    client = start_dask(num_threads=num_threads, allow_bytes=get_ram_allowance())
+    allow_bytes = get_ram_allowance()
+    client = start_dask(num_threads=num_threads, allow_bytes=allow_bytes)
     PARTITION_SIZE = get_partition_size(num_threads = num_threads, allow_bytes = allow_bytes)    
     dask.config.set({"dataframe.shuffle.method": "tasks"})
     
     # Processing
     relax_memory_limits()
-    connectome = load_connectome(DATASET, PARTITION_SIZE)
+    connectome = load_connectome(dataset, PARTITION_SIZE)
     connectome = normalise_nt_probs(connectome)
     connectome = attach_synapse_coords(connectome, PARTITION_SIZE)
     connectome = attach_neuropil_metadata(connectome)
@@ -578,3 +570,23 @@ def main():
     # End timer
     end_time = time.time()
     print(f"Runtime: {end - start:.2f} seconds; Num-threads: {num_threads}")
+    
+    
+    
+def perf_test(num_threads, dataset_code):
+    """ Performance test main pipeline. 
+    Note: preprocess.py must already be executed """
+        
+    # Set up environment
+    if dataset_code == 0:
+        DATASET = os.path.join(DATA_DIR, "tiny.parquet") # ~ 215 KB
+    elif dataset_code == 1:
+        DATASET = os.path.join(DATA_DIR, "small.parquet") # ~ 56 MB
+    elif dataset_code == 2:
+        DATASET = os.path.join(DATA_DIR, "medium.parquet") # ~ 272 MB
+    elif dataset_code == 3:
+        DATASET = os.path.join(DATA_DIR, "large.parquet") # ~ 583 MB
+    elif dataset_code == 4:
+        DATASET = os.path.join(DATA_DIR, "proofread_connections_783.parquet") # ~1.05 GB        
+        
+    main(num_threads, DATASET)
