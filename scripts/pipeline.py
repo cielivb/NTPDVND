@@ -14,6 +14,8 @@ import time
 from dask import dataframe as ddf
 from dask.distributed import Client
 
+from . import preprocess
+
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(ROOT_DIR, "data")
 LOCALDATA_DIR = os.path.join(ROOT_DIR, "localdata")
@@ -484,10 +486,16 @@ def do_stats(r_path, result_dir, allow_bytes):
 
 def main():
     """ This section mimics the Jupyter Notebook code """
+    preprocess.run() # Generates test files if not already present.
     
     # Set up environment
     num_threads = 4
-    DATASET = ""
+    DATASET = os.path.join(DATA_DIR, "proofread_connections_783.parquet") # ~1.05 GB    
+    #DATASET = os.path.join(DATA_DIR, "large.parquet") # ~ 583 MB
+    #DATASET = os.path.join(DATA_DIR, "medium.parquet") # ~ 272 MB
+    #DATASET = os.path.join(DATA_DIR, "small.parquet") # ~ 56 MB
+    #DATASET = os.path.join(DATA_DIR, "tiny.parquet") # ~ 215 KB
+    
     session_id = f"{DATASET.strip(".parquet")}_{num_threads}_threads"
     OUTDIR = os.path.join(ROOT_DIR, "results", session_id)
     start_time = time.time()

@@ -1,11 +1,9 @@
 temp/
 data/
-results/
 .venv/
 renv/
 .Rproj.user/
 results/notebook/temp.parquet/
-.ipynb_checkpoints/
 NPCDCC.Rproj/
 
 # Byte-compiled / optimized / DLL files

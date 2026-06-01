@@ -10,7 +10,6 @@ import os
 import pandas as pd
 import pyvista as pv
 import sys
-from trame.widgets import vuetify
 from scipy.spatial import ConvexHull
 from datetime import datetime
 
