@@ -159,6 +159,40 @@ def plot_hex_per_neuropil(connectome, file: str):
 
 
 
+def plot_neuropils_in_region(data, region, outpath):
+    """ Generate hex bin plots for each neuropil in region """
+    neuropils = list(data["neuropil"].unique())
+    grouped = data.groupby("neuropil")
+    num_plots = len(neuropils)
+    fig, axes = _make_ternary_subplots(num_plots)
+    fig.set_title(region)
+    
+    for i, ax in enumerate(axes[:num_plots]):
+        
+        # Compute neuropil i's probabilities into a numpy array
+        group = grouped.get_group(neuropils[i])
+        gaba, ach, other = group[["gaba", "ach", "other"]].to_numpy().T
+        
+        # Plot hexbin
+        hb = ax.hexbin(gaba, ach, other, gridsize=20)
+        ax.set_tlabel("GABA")
+        ax.set_llabel("ACH")
+        ax.set_rlabel("OTHER")
+        ax.taxis.set_label_position("tick1")
+        ax.laxis.set_label_position("tick1")
+        ax.raxis.set_label_position("tick1")
+        ax.set_title(neuropils[i])
+    
+    # Hide unused axes
+    for j in range(num_plots, len(axes)):
+        axes[j].axis("off")
+    plt.tight_layout() # fit subplots to figure size
+    plt.savefig(outpath, format="png", dpi=300)    
+
+
+
+
+
 def load_parquet_files(inpath):
     """ Return a list of tuples containing formatted labels and respective dask 
     dataframes 
@@ -176,6 +210,7 @@ def load_parquet_files(inpath):
 
 # Manage subprocess calls
 if __name__ == "__main__":
+    
     print("Received call")
     inpath, outpath = sys.argv[2], sys.argv[3]
     print("Loading data from file")
@@ -192,3 +227,7 @@ if __name__ == "__main__":
     elif sys.argv[1] == "plot_mean_nt_probs_by_neuropil_size":
         neuropil_summary_pdf = data[0][1]
         plot_mean_nt_probs_by_neuropil_size(neuropil_summary_pdf, outpath)
+        
+    elif sys.argv[1] == "plot_neuropils_in_region":
+        region, pdf = data[0][0], data[0][1] 
+        plot_neuropils_in_region(pdf, region, outpath)

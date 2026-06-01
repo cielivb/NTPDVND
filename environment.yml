@@ -16,17 +16,7 @@ dependencies:
   - pandas # In-memory dataframes
   - psutil # .virtual_memory() to get machine RAM
   - pyarrow # Streaming .feather -> .parquet
+  - pyvista # 3D plotting
   - scipy # 3D ConvexHull to help render 3D neuropil outlines
   - tqdm # Progress bars (.feather -> .parquet)
   - pip
-  
-  # Install 3D visualisation/pyvista stack via pip
-  # - Trame packages don't have fully supported conda forge builds
-  # - conda's VTK is uncooperative on Windows so using pip's VTK instead
-  # - The install order is crucial - pyvista checks if trame packages are available
-  - pip: # order must be preserved here
-      - trame # JS-Python framework for browser-rendering
-      - trame-vuetify # UI components (including checkboxes)
-      - trame-vtk # Browser-VTK interface
-      - "pyvista[trame]" # Wraps VTK and Trame
-      - vtk # The core GPU-accelerated visualisation engine

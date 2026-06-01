@@ -380,18 +380,29 @@ def tag_clusters(connectome):
 
 def tag_unclassified_clusters(connectome):
     """ Update 'none' values in cluster column with sub-classifications """
+    # De-categorise old cluster values in metadata AND graph (fails without
+    # _meta update)
+    connectome = connectome.map_partitions(
+        lambda pdf: pdf.assign(cluster=pdf["cluster"].astype("object")),
+        meta=connectome._meta.assign(cluster="object"))
     
     def _tag(pdf):
-        tags = pd.Series("misc_noise", index=pdf.index)
-        tags[(pdf["cluster"] == "none") & 
+        tags = pd.Series(pd.NA, index=pdf.index)
+        mask_none = pdf["cluster"] == "none"
+        tags[mask_none & 
              (pdf["ach"] < 0.15) & 
              (pdf["gaba"] > 0.1)] = "low_ach_noise"
-        tags[(pdf["cluster"] == "none") & 
+        tags[mask_none & 
              (pdf["gaba"] <= 0.15) & 
              (pdf["ach"] >= 0.1)] = "low_gaba_noise"
         return tags
+    
     tags = connectome.map_partitions(_tag, meta=("cluster", "category"))
-    return connectome.assign(cluster=tags).persist()
+    updated = connectome.assign(
+        cluster = connectome["cluster"].where(tags.isna(), tags))
+    updated["cluster"] = updated["cluster"].astype("category").cat.as_known()
+    
+    return updated.persist()
 
 
 def make_brain_map(sample_path: str, outdir: str):

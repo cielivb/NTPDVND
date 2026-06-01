@@ -5,11 +5,11 @@ synapse and every point's colour corresponds to its assigned neurotransmitter
 probability cluster.
 
 """
-
 import numpy as np
 import os
 import pandas as pd
 import pyvista as pv
+import sys
 from trame.widgets import vuetify
 from scipy.spatial import ConvexHull
 from datetime import datetime
@@ -27,7 +27,7 @@ def toggle(actor_name, actors, state, plotter):
 
 def get_convex_hull(neuropil_df):
     """ Return the convex hull surrounding the xyz coords of a given neuropil """
-    coords = neuropil_df[["x", "y", "z"]].to_numpy(copy=False) # Get coords
+    coords = neuropil_df[["x", "y", "z"]].to_numpy(dtype=np.float32, copy=False) # Get coords
     convex_hull_raw = ConvexHull(coords) # Get 3D convex hull
     
     # Build 1D pyvista faces array [3, i1, i2, i3, 3, i4, i5, i6, ...] from
@@ -55,10 +55,11 @@ def make_brain_map(connectome, outdir):
         
     # Render connectome coordinates
     grouped2 = connectome.groupby("cluster")
-    gaba_cloud = grouped2.get_group("gaba")[["x", "y", "z"]]
-    ach_cloud = grouped2.get_group("ach")[["x", "y", "z"]]
-    other_cloud = grouped2.get_group("other")[["x", "y", "z"]]
-    none_cloud = grouped2.get_group("none")[["x", "y", "z"]]
+    gaba_cloud = grouped2.get_group("gaba")[["x", "y", "z"]].to_numpy(dtype=np.float32, copy=False)
+    ach_cloud = grouped2.get_group("ach")[["x", "y", "z"]].to_numpy(dtype=np.float32, copy=False)
+    other_cloud = grouped2.get_group("other")[["x", "y", "z"]].to_numpy(dtype=np.float32, copy=False)
+    none_cloud = grouped2.get_group("none")[["x", "y", "z"]].to_numpy(dtype=np.float32, copy=False)
+    
     actors = {
         "gaba_actor": plotter.add_points(gaba_cloud, color="blue", point_size=3),
         "ach_actor": plotter.add_points(ach_cloud, color="yellow", point_size=3),
@@ -69,41 +70,34 @@ def make_brain_map(connectome, outdir):
     for actor in actors.values():
         actor.SetVisibility(True)
 
-    # Set up UI with checkboxes
-    with plotter.ui as ui:
-        with vuetify.VContainer(fluid=True):
-            for actor_name in actors:
-                ui.add_checkbox(actor_name, True,
-                    lambda state, name=actor_name: toggle(
-                        name, actors, state, plotter))
-
     # Save brain map
-    save(plotter, outdir)
+    save(plotter, actors, outdir)
 
 
-def save(plotter, outdir):
+def save(plotter, actors, outdir):
     """ Save 3D interactive visualisation and above/side/front screenshots """
-    print(f"{datetime.now().strftime("%H:%M:%S")} Saving plot ...")
-    plotter.export_html(os.path.join(outdir, "bm_interactive.html"), backend="trame")    
+    print(f"{datetime.now().strftime("%H:%M:%S")} Saving plots ...")
     
-    # Save screenshots from above, side, and front views
-    plotter.reset_camera()
-    plotter.view_vector((0, 0, 1)) # Above / looking down z-axis
-    plotter.screenshot(os.path.join(outdir, "bm_above.png"))
-    plotter.reset_camera()
-    plotter.view_vector((1, 0, 0)) # Side / looking along x-axis
-    plotter.screenshot(os.path.join(outdir, "bm_side.png"))
-    plotter.reset_camera()
-    plotter.view_vector((0, 1, 0)) # Front / looking along y-axis
-    plotter.screenshot(os.path.join(outdir, "bm_front.png"))
+    # Export brain map with all points visible
+    plotter.export_html(os.path.join(outdir, "bm_interactive.html"))
     
-    print(f"{datetime.now().strftime("%H:%M:%S")} Plot saved")
+    # Export brain maps with only one thing toggled on
+    for actor in actors.values():
+        actor.SetVisibility(False)
+    for actor in actors:
+        actor.SetVisibility(True)
+        label = actor.strip("_actor")
+        plotter.export_html(os.path.join(outdir, f"bm_{label}.html"))
+        actor.SetVisibility(False)
+    
+    print(f"{datetime.now().strftime("%H:%M:%S")} Plots saved")
 
 
 if __name__ == "__main__":
     print("Call received!")
-    inpath, outdir = sys.argv[2], sys.argv[3]
+    inpath, outdir = sys.argv[1], sys.argv[2]
     print("Loading sampled connectome from file ...")
+    print(inpath)
     connectome = pd.read_parquet(inpath)
     print("Making brain map ...")
     make_brain_map(connectome, outdir)
