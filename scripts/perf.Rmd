@@ -1,0 +1,34 @@
+---
+title: "Performance Test Results"
+author: "Ciel Baumann"
+date: "2026-06-01"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# Results
+df <- data.frame(size = c(0.21, 0.21, 0.21, 0.21, 56, 56, 56, 56, 272, 272, 272, 272),
+           threads = c(4,3,2,1,4,3,2,1,4,3,2,1),
+           seconds = c(180,175,163,250,212,224,240,320,320,334,552,1224))
+```
+
+```{r}
+cols <- rainbow(length(unique(df$threads)))[as.factor(df$threads)]
+
+plot(df$size, df$seconds,
+     col = cols,
+     pch = 19,
+     xlab = "Problem Size (MB)",
+     ylab = "Seconds")
+
+legend("topleft",
+       legend = levels(as.factor(df$threads)),
+       col = rainbow(length(unique(df$threads))),
+       pch = 19,
+       title = "Threads")
+
+```

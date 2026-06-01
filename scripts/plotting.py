@@ -212,6 +212,7 @@ if __name__ == "__main__":
     
     print("Received call")
     inpath, outpath = sys.argv[2], sys.argv[3]
+    os.makedirs(os.path.dirname(outpath), exist_ok=True)
     print("Loading data from file")
     data = load_parquet_files(inpath)
     print("Routing ...")
